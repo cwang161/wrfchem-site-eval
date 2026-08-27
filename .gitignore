@@ -209,6 +209,12 @@ tempCodeRunnerFile.py
 # PyPI configuration file
 .pypirc
 
+# Local WRF/observation data and generated outputs
+data/
+output/
+*.parquet
+*.nc
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

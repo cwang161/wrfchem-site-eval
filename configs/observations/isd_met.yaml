@@ -1,0 +1,32 @@
+dataset:
+  name: ISD meteorology
+  file: /path/to/isd_met_observations.csv
+  format: csv
+
+columns:
+  station_id: Site
+  time: Time
+  latitude: LATITUDE
+  longitude: LONGITUDE
+
+time:
+  timezone: UTC
+
+variables:
+  temperature:
+    column: Temp
+    unit: degC_scaled_10
+  dew_point:
+    column: Dew_point
+    unit: degC_scaled_10
+  wind_speed:
+    column: Wind_speed
+    unit: m_s-1_scaled_10
+  wind_direction:
+    column: Wind_direction
+    unit: degree
+  precipitation_1h:
+    column: 1-h_precip
+    unit: mm_scaled_10
+
+missing_values: [-9999, 9999, 999.9]

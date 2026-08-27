@@ -1,0 +1,40 @@
+case:
+  name: BASE2020
+  label: WRF-Chem baseline simulation
+
+wrf:
+  input_dir: /path/to/BASE2020/wrfout
+  file_pattern: "wrfout_d01_*"
+  domain: d01
+
+station_groups:
+  met:
+    enabled: true
+    observation_config: configs/observations/isd_met.yaml
+    interpolation: bilinear
+  chem:
+    enabled: true
+    observation_config: configs/observations/generic_chem.yaml
+    interpolation: bilinear
+    include_met_at_sites: true
+
+evaluation:
+  met:
+    - temperature
+    - relative_humidity
+    - wind_speed
+    - wind_direction
+    - precipitation
+    - pbl_height
+  chem:
+    - pm25
+    - pm10
+    - o3
+    - no2
+    - so2
+    - co
+
+output:
+  directory: output/BASE2020
+  format: parquet
+  partition: month
