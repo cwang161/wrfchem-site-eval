@@ -1,13 +1,14 @@
 dataset:
   name: ISD meteorology
+  profile: isd_hourly_met
   file: /path/to/isd_met_observations.csv
-  format: csv
+  format: auto
 
 columns:
   station_id: Site
   time: Time
-  latitude: LATITUDE
-  longitude: LONGITUDE
+  latitude: LAT
+  longitude: LON
 
 time:
   timezone: UTC
@@ -15,18 +16,40 @@ time:
 variables:
   temperature:
     column: Temp
-    unit: degC_scaled_10
+    source_unit: degC_scaled_10
+    target_unit: K
+    scale: 0.1
+    offset: 273.15
   dew_point:
     column: Dew_point
-    unit: degC_scaled_10
+    source_unit: degC_scaled_10
+    target_unit: K
+    scale: 0.1
+    offset: 273.15
   wind_speed:
     column: Wind_speed
-    unit: m_s-1_scaled_10
+    source_unit: m_s-1_scaled_10
+    target_unit: m_s-1
+    scale: 0.1
   wind_direction:
     column: Wind_direction
     unit: degree
   precipitation_1h:
     column: 1-h_precip
-    unit: mm_scaled_10
+    source_unit: mm_scaled_10
+    target_unit: mm
+    scale: 0.1
+
+derived:
+  relative_humidity:
+    method: temperature_dewpoint
+    temperature: temperature
+    dew_point: dew_point
 
 missing_values: [-9999, 9999, 999.9]
+duplicate_policy: error
+
+metadata:
+  country: CTRY
+  station_name: STATION NAME
+  elevation_m: ELEV(M)

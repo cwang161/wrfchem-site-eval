@@ -14,7 +14,7 @@ station_groups:
     interpolation: bilinear
   chem:
     enabled: true
-    observation_config: configs/observations/generic_chem.yaml
+    observation_config: configs/observations/chem_qc.yaml
     interpolation: bilinear
     include_met_at_sites: true
 

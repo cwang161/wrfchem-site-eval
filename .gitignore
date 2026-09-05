@@ -214,6 +214,7 @@ data/
 output/
 *.parquet
 *.nc
+/deliverables/
 
 # Marimo
 marimo/_static/

@@ -1,0 +1,56 @@
+dataset:
+  name: QC-controlled surface chemistry observations
+  profile: chem_qc
+  file: /path/to/chem_qc.csv
+  format: auto
+
+columns:
+  station_id: code
+  time: Time
+  latitude: latitude
+  longitude: longitude
+
+time:
+  timezone: UTC
+  output_timezone: UTC
+
+# By default, only observations explicitly marked "valid" enter evaluation.
+# Add gap_filled here only if filled observations should be evaluated.
+variables:
+  pm25:
+    column: pm25
+    unit: ug_m-3
+    qc_flag_column: pm25_qc_flag
+    accepted_qc_flags: [valid]
+  pm10:
+    column: pm10
+    unit: ug_m-3
+    required: false
+  o3:
+    column: o3
+    unit: ug_m-3
+    qc_flag_column: o3_qc_flag
+    accepted_qc_flags: [valid]
+  no2:
+    column: no2
+    unit: ug_m-3
+    qc_flag_column: no2_qc_flag
+    accepted_qc_flags: [valid]
+  so2:
+    column: so2
+    unit: ug_m-3
+    qc_flag_column: so2_qc_flag
+    accepted_qc_flags: [valid]
+  co:
+    column: co
+    unit: mg_m-3
+    required: false
+
+missing_values: [-9999, 9999]
+duplicate_policy: error
+
+metadata:
+  location_name: location_name
+  city_name: city_name
+  district_name: district_name
+  state_name: state_name
