@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.0 - 2026-09-05
+
+- Add end-to-end WRF/WRF-Chem extraction, matching and evaluation.
+- Open each WRF file once for all station groups with resumable checkpoints.
+- Derive RH, rotated winds and interval precipitation; convert gas units.
+- Add consolidated met/chem products, metrics, figures and case comparison.
+
 ## 0.2.0 - 2026-09-05
 
 - Add configurable combined-wide chemistry and ISD meteorology readers.

@@ -37,4 +37,16 @@ evaluation:
 output:
   directory: output/BASE2020
   format: parquet
-  partition: month
+
+# Exact hourly matching by default. Set frequency: 1D for daily evaluation;
+# precipitation is summed while other numeric variables are averaged.
+matching:
+  tolerance: null
+  frequency: null
+  # For combined hourly ISD + daily GSOD use: {default: 20, precipitation: 1}
+  observation_minimum_count: null
+  model_minimum_count: null
+  offset: null
+
+figures:
+  enabled: true

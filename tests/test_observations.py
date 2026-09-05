@@ -85,3 +85,32 @@ def test_station_table_rejects_changing_coordinates():
     })
     with pytest.raises(ConfigError, match="change over time"):
         station_table(observations)
+
+
+def test_combined_sources_coalesces_variables(tmp_path):
+    pd.DataFrame({
+        "Time": ["2019-01-01"], "Site": ["A"], "LAT": [10.0], "LON": [100.0], "Temp": [300.0],
+    }).to_csv(tmp_path / "met.csv", index=False)
+    pd.DataFrame({
+        "Time": ["2019-01-01"], "Site": ["A"], "LAT": [10.0], "LON": [100.0], "Rain": [1.0],
+    }).to_csv(tmp_path / "rain.csv", index=False)
+    base = {
+        "dataset": {"profile": "combined_wide"},
+        "columns": {"station_id": "Site", "time": "Time", "latitude": "LAT", "longitude": "LON"},
+        "time": {"timezone": "UTC"},
+    }
+    _write_yaml(tmp_path / "met.yaml", {
+        **base, "dataset": {**base["dataset"], "file": "met.csv"},
+        "variables": {"temperature": {"column": "Temp"}},
+    })
+    _write_yaml(tmp_path / "rain.yaml", {
+        **base, "dataset": {**base["dataset"], "file": "rain.csv"},
+        "variables": {"precipitation": {"column": "Rain", "scale": 25.4}},
+    })
+    combined = _write_yaml(tmp_path / "combined.yaml", {
+        "dataset": {"profile": "combined_sources"}, "sources": ["met.yaml", "rain.yaml"],
+    })
+    result = read_observations(combined)
+    assert len(result) == 1
+    assert result.loc[0, "temperature"] == 300.0
+    assert result.loc[0, "precipitation"] == pytest.approx(25.4)

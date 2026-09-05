@@ -88,10 +88,20 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
     path = Path(config_path).resolve()
     config = _load_yaml(path)
     dataset = config.get("dataset", {})
+    if dataset.get("profile") == "combined_sources":
+        sources = config.get("sources")
+        if not isinstance(sources, list) or not sources:
+            raise ConfigError("combined_sources requires a non-empty 'sources' list")
+        tables = [read_observations(_resolve(path.parent, str(source))) for source in sources]
+        combined = pd.concat(tables, ignore_index=True, sort=False)
+        # Validate coordinates before coalescing coincident station/time rows.
+        station_table(combined)
+        combined = combined.sort_values(["station_id", "time"])
+        combined = combined.groupby(["station_id", "time"], observed=True, as_index=False).first()
+        return combined.sort_values(["station_id", "time"]).reset_index(drop=True)
     if dataset.get("profile") not in {"combined_wide", "chem_qc", "isd_hourly_met"}:
         raise ConfigError(
-            "This release supports observation profiles: combined_wide, chem_qc, "
-            "isd_hourly_met"
+            "Supported profiles: combined_wide, combined_sources, chem_qc, isd_hourly_met"
         )
     source = _resolve(path.parent, str(dataset.get("file", "")))
     raw = _read_table(source, str(dataset.get("format", "auto")))
@@ -149,6 +159,13 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
             (17.67 * temp_c) / (243.5 + temp_c)
         )
         out["relative_humidity"] = rh.clip(0.0, 1.0)
+
+    wind_rules = config.get("quality_rules", {}).get("wind", {})
+    if wind_rules and "wind_direction" in out:
+        invalid = out["wind_direction"].isin(wind_rules.get("invalid_direction_values", []))
+        if "wind_speed" in out and wind_rules.get("calm_speed_below") is not None:
+            invalid |= out["wind_speed"] < float(wind_rules["calm_speed_below"])
+        out.loc[invalid, "wind_direction"] = np.nan
 
     metadata = config.get("metadata", {})
     for canonical, source_column in metadata.items():

@@ -1,0 +1,30 @@
+dataset:
+  name: GSOD daily precipitation
+  profile: combined_wide
+  file: /path/to/met_gsod_observations.csv
+  format: auto
+
+columns:
+  station_id: site
+  time: Time
+  latitude: LATITUDE
+  longitude: LONGITUDE
+
+time:
+  timezone: UTC
+
+variables:
+  precipitation:
+    column: PRCP
+    source_unit: inch
+    target_unit: mm
+    scale: 25.4
+    qc_flag_column: PRCP_ATTRIBUTES
+    accepted_qc_flags: [G, D, F]
+
+missing_values: [99.99, 999.9, 9999]
+duplicate_policy: error
+
+metadata:
+  station_name: NAME
+  elevation_m: ELEVATION

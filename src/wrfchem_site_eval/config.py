@@ -63,6 +63,22 @@ def build_plan(config: dict[str, Any]) -> EvaluationPlan:
     except KeyError as exc:
         raise ConfigError(str(exc)) from exc
 
+    wrf = _mapping(config.get("wrf"), "wrf")
+    for key in ("input_dir", "file_pattern"):
+        if not isinstance(wrf.get(key), str) or not wrf[key].strip():
+            raise ConfigError(f"'wrf.{key}' must be a non-empty string")
+    enabled = []
+    for group_name in ("met", "chem"):
+        group = _mapping(station_groups.get(group_name, {}), f"station_groups.{group_name}")
+        if group.get("enabled", False):
+            enabled.append(group_name)
+            if not isinstance(group.get("observation_config"), str):
+                raise ConfigError(f"'station_groups.{group_name}.observation_config' is required")
+            if group.get("interpolation", "nearest") not in {"nearest", "bilinear"}:
+                raise ConfigError(f"'station_groups.{group_name}.interpolation' must be nearest or bilinear")
+    if not enabled:
+        raise ConfigError("At least one station group must be enabled")
+
     return EvaluationPlan(
         case_name=case_name,
         met_variables=tuple(met_variables),

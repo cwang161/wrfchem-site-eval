@@ -8,7 +8,9 @@ from pathlib import Path
 
 from .config import build_plan, load_config
 from .errors import ConfigError
+from .evaluation import compare_case_metrics
 from .observations import read_observations, station_table
+from .pipeline import run_case
 from .station_mapping import map_stations
 
 
@@ -26,6 +28,12 @@ def _parser() -> argparse.ArgumentParser:
     mapping.add_argument("wrf_file", help="Representative WRF output file")
     mapping.add_argument("--method", choices=("nearest", "bilinear"), default="nearest")
     mapping.add_argument("--output", required=True, help="Output station mapping CSV")
+    run = subparsers.add_parser("run", help="Run a complete configured evaluation case")
+    run.add_argument("config", help="Path to a case YAML file")
+    run.add_argument("--resume", action="store_true", help="Reuse completed mapping/model products")
+    compare = subparsers.add_parser("compare-cases", help="Combine metric tables from cases")
+    compare.add_argument("metrics", nargs="+", help="Metric CSV/Parquet files")
+    compare.add_argument("--output", required=True, help="Combined CSV/Parquet table")
     return parser
 
 
@@ -42,6 +50,22 @@ def _write_table(data, output: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.command == "run":
+        try:
+            products = run_case(args.config, resume=args.resume)
+            print(json.dumps({key: str(value) for key, value in products.items()}, indent=2))
+            return 0
+        except (ConfigError, ImportError, OSError, ValueError) as exc:
+            print(f"Error: {exc}")
+            return 2
+    if args.command == "compare-cases":
+        try:
+            result = compare_case_metrics(args.metrics, args.output)
+            print(f"Wrote {len(result)} metric rows to {args.output}")
+            return 0
+        except (OSError, ValueError, ImportError) as exc:
+            print(f"Error: {exc}")
+            return 2
     if args.command in {"normalize-observations", "map-stations"}:
         try:
             observations = read_observations(args.config if args.command == "normalize-observations" else args.observation_config)

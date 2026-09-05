@@ -1,0 +1,9 @@
+dataset:
+  name: Combined ISD hourly meteorology and GSOD daily precipitation
+  profile: combined_sources
+
+# Paths are relative to this YAML file. Earlier sources take precedence if the
+# same station/time/variable is present in more than one source.
+sources:
+  - isd_met.yaml
+  - gsod_precip.yaml

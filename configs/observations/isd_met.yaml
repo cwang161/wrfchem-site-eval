@@ -34,7 +34,7 @@ variables:
   wind_direction:
     column: Wind_direction
     unit: degree
-  precipitation_1h:
+  precipitation:
     column: 1-h_precip
     source_unit: mm_scaled_10
     target_unit: mm
@@ -45,6 +45,12 @@ derived:
     method: temperature_dewpoint
     temperature: temperature
     dew_point: dew_point
+
+quality_rules:
+  wind:
+    # ISD codes calm wind direction as 0; direction is undefined for calm wind.
+    invalid_direction_values: [0]
+    calm_speed_below: 0.5
 
 missing_values: [-9999, 9999, 999.9]
 duplicate_policy: error
