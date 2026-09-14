@@ -4,6 +4,11 @@ Configuration-driven, end-to-end evaluation of WRF/WRF-Chem meteorology and
 chemistry against surface stations. Version 1.0 replaces site-by-site NCO loops:
 every WRF file is opened once and all met/chem stations are sampled together.
 
+Original wrfout files can be read directly, or an optional preprocessing step
+can retain only requested variables and surface chemistry in compact NetCDF
+files before the originals are archived or deleted. Both paths use the same
+station extraction engine.
+
 ## Implemented workflow
 
 ```text
@@ -40,6 +45,14 @@ wrfchem-site-eval show-plan my_case.yaml
 wrfchem-site-eval run my_case.yaml
 ```
 
+Optionally create reduced WRF files as a separate step:
+
+```bash
+python -m wrfchem_site_eval reduce-wrf my_case.yaml
+# Equivalent standalone program:
+python scripts/reduce_wrf.py my_case.yaml
+```
+
 If an HPC job stops, restart completed extraction from checkpoints:
 
 ```bash
@@ -74,3 +87,4 @@ Chemistry uses the combined-wide `chem_qc` profile. Column names, time zones,
 scales and accepted QC flags are configured in YAML rather than internal code.
 See `configs/example_case.yaml`, `configs/observations/` and
 `docs/observation_configuration.md`.
+Reduced-file modes are documented in `docs/reduced_wrf.md`.

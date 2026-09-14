@@ -11,6 +11,7 @@ from .errors import ConfigError
 from .evaluation import compare_case_metrics
 from .observations import read_observations, station_table
 from .pipeline import run_case
+from .reduce_wrf import reduce_from_case_config
 from .station_mapping import map_stations
 
 
@@ -34,6 +35,11 @@ def _parser() -> argparse.ArgumentParser:
     compare = subparsers.add_parser("compare-cases", help="Combine metric tables from cases")
     compare.add_argument("metrics", nargs="+", help="Metric CSV/Parquet files")
     compare.add_argument("--output", required=True, help="Combined CSV/Parquet table")
+    reduce = subparsers.add_parser(
+        "reduce-wrf", help="Optionally create compact WRF files before station extraction"
+    )
+    reduce.add_argument("config", help="Path to a case YAML file")
+    reduce.add_argument("--overwrite", action="store_true", help="Replace existing reduced files")
     return parser
 
 
@@ -50,6 +56,14 @@ def _write_table(data, output: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.command == "reduce-wrf":
+        try:
+            outputs = reduce_from_case_config(args.config, overwrite=args.overwrite)
+            print(f"Prepared {len(outputs)} reduced WRF files")
+            return 0
+        except (ConfigError, ImportError, OSError, ValueError) as exc:
+            print(f"Error: {exc}")
+            return 2
     if args.command == "run":
         try:
             products = run_case(args.config, resume=args.resume)

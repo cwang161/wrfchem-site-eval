@@ -6,6 +6,14 @@ wrf:
   input_dir: /path/to/BASE2020/wrfout
   file_pattern: "wrfout_d01_*"
   domain: d01
+  reduction:
+    # false: extract directly from input_dir; true: create compact files first.
+    enabled: false
+    output_dir: /path/to/BASE2020/reduced_wrfout
+    # Can remain true with enabled: false to use already-created reduced files.
+    use_for_extraction: false
+    overwrite: false
+    compression_level: 2
 
 station_groups:
   met:

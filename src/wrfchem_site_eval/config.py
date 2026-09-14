@@ -67,6 +67,13 @@ def build_plan(config: dict[str, Any]) -> EvaluationPlan:
     for key in ("input_dir", "file_pattern"):
         if not isinstance(wrf.get(key), str) or not wrf[key].strip():
             raise ConfigError(f"'wrf.{key}' must be a non-empty string")
+    reduction = _mapping(wrf.get("reduction", {}), "wrf.reduction")
+    if reduction.get("enabled", False) or reduction.get("use_for_extraction", False):
+        if not isinstance(reduction.get("output_dir"), str) or not reduction["output_dir"].strip():
+            raise ConfigError("'wrf.reduction.output_dir' must be set when reduction is enabled or used")
+    compression = reduction.get("compression_level", 2)
+    if not isinstance(compression, int) or not 0 <= compression <= 9:
+        raise ConfigError("'wrf.reduction.compression_level' must be an integer from 0 to 9")
     enabled = []
     for group_name in ("met", "chem"):
         group = _mapping(station_groups.get(group_name, {}), f"station_groups.{group_name}")

@@ -15,6 +15,7 @@ from .evaluation import aggregate_time, calculate_metrics, collocate
 from .extraction import discover_wrf_files, extract_wrf_timeseries, finalize_precipitation
 from .observations import read_observations, station_table
 from .plotting import create_evaluation_figures
+from .reduce_wrf import reduce_wrf_files
 from .station_mapping import map_stations
 
 
@@ -61,7 +62,32 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
     plan = build_plan(config)
     wrf = config.get("wrf", {})
     input_dir = _resolve(config_file.parent, str(wrf.get("input_dir", "")))
-    files = discover_wrf_files(input_dir, str(wrf.get("file_pattern", "wrfout_*")))
+    file_pattern = str(wrf.get("file_pattern", "wrfout_*"))
+    reduction = wrf.get("reduction", {})
+    reduction_enabled = bool(reduction.get("enabled", False))
+    use_reduced = bool(reduction.get("use_for_extraction", reduction_enabled))
+    reduced_dir = None
+    if reduction.get("output_dir"):
+        reduced_dir = _resolve(config_file.parent, str(reduction["output_dir"]))
+    if use_reduced and not reduction_enabled:
+        if reduced_dir is None:
+            raise ConfigError("'wrf.reduction.output_dir' is required when using reduced files")
+        files = discover_wrf_files(reduced_dir, file_pattern)
+    else:
+        source_files = discover_wrf_files(input_dir, file_pattern)
+        if reduction_enabled:
+            if reduced_dir is None:
+                raise ConfigError("'wrf.reduction.output_dir' is required when reduction is enabled")
+            reduced_files = reduce_wrf_files(
+                source_files,
+                reduced_dir,
+                plan.wrf_variables,
+                overwrite=bool(reduction.get("overwrite", False)),
+                compression_level=int(reduction.get("compression_level", 2)),
+            )
+            files = reduced_files if use_reduced else source_files
+        else:
+            files = source_files
     output = config.get("output", {})
     root = _resolve(config_file.parent, str(output.get("directory", f"output/{plan.case_name}")))
     fmt = str(output.get("format", "parquet")).lower()

@@ -47,7 +47,13 @@ def test_complete_case_pipeline(tmp_path):
     })
     case = _yaml(tmp_path / "case.yaml", {
         "case": {"name": "SYNTHETIC"},
-        "wrf": {"input_dir": "wrf", "file_pattern": "wrfout_d01_*", "domain": "d01"},
+        "wrf": {
+            "input_dir": "wrf", "file_pattern": "wrfout_d01_*", "domain": "d01",
+            "reduction": {
+                "enabled": True, "output_dir": "reduced_wrf", "use_for_extraction": True,
+                "compression_level": 1,
+            },
+        },
         "station_groups": {
             "met": {"enabled": True, "observation_config": "met.yaml", "interpolation": "nearest"},
             "chem": {"enabled": True, "observation_config": "chem.yaml", "interpolation": "nearest", "include_met_at_sites": True},
@@ -59,6 +65,7 @@ def test_complete_case_pipeline(tmp_path):
     })
     products = run_case(case)
     assert all(path.exists() for path in products.values())
+    assert (tmp_path / "reduced_wrf/reduced_wrf_manifest.json").exists()
     model_chem = pd.read_csv(tmp_path / "output/SYNTHETIC/model_chem.csv")
     assert {"pm25", "o3", "temperature", "wind_speed", "precipitation"} <= set(model_chem)
     metrics_chem = pd.read_csv(products["metrics_chem"])

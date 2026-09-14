@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.0 - 2026-09-14
+
+- Add optional compact WRF preprocessing without modifying original files.
+- Retain only configured dependencies and `bottom_top=0` chemistry.
+- Support direct, create-and-use, and reuse-existing reduced-file modes.
+- Add `reduce-wrf` CLI, standalone script, provenance manifest and equivalence tests.
+
 ## 1.0.0 - 2026-09-05
 
 - Add end-to-end WRF/WRF-Chem extraction, matching and evaluation.

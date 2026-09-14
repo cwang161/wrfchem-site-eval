@@ -13,12 +13,14 @@ WRF_DEPENDENCIES: dict[str, tuple[str, ...]] = {
     "surface_temperature": ("TSK",),
     "pm25": ("PM2_5_DRY",),
     "pm10": ("PM10",),
-    "o3": ("o3",),
-    "no2": ("no2",),
-    "so2": ("so2",),
-    "co": ("co",),
-    "no": ("no",),
-    "nh3": ("nh3",),
+    # Surface pressure and temperature are retained because ppmv gases are
+    # converted to mass concentration at each grid cell and time.
+    "o3": ("o3", "PSFC", "T2"),
+    "no2": ("no2", "PSFC", "T2"),
+    "so2": ("so2", "PSFC", "T2"),
+    "co": ("co", "PSFC", "T2"),
+    "no": ("no", "PSFC", "T2"),
+    "nh3": ("nh3", "PSFC", "T2"),
 }
 
 OPTIONAL_WRF_VARIABLES = {"RAINSH"}
