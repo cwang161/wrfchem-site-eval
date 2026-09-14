@@ -27,3 +27,47 @@ def test_unknown_variable_is_rejected():
     }
     with pytest.raises(ConfigError, match="Unsupported canonical variables"):
         build_plan(config)
+
+
+def test_extraction_is_independent_from_evaluation():
+    config = {
+        "case": {"name": "separate"},
+        "wrf": {"input_dir": "/tmp", "file_pattern": "wrfout_*"},
+        "station_groups": {
+            "met": {"enabled": True, "observation_config": "met.yaml"},
+            "chem": {
+                "enabled": True, "observation_config": "chem.yaml",
+                "include_met_at_sites": True,
+            },
+        },
+        "extraction": {
+            "met": ["temperature", "wind_speed", "surface_pressure"],
+            "chem": ["pm25", "o3", "no2"],
+            "met_at_chem_sites": ["temperature", "surface_pressure"],
+        },
+        "evaluation": {"met": ["temperature"], "chem": ["pm25", "o3"]},
+    }
+    plan = build_plan(config)
+    assert plan.met_extraction_variables == ("temperature", "wind_speed", "surface_pressure")
+    assert plan.met_evaluation_variables == ("temperature",)
+    assert plan.chem_extraction_variables == ("pm25", "o3", "no2")
+    assert plan.chem_station_extraction_variables == (
+        "pm25", "o3", "no2", "temperature", "surface_pressure"
+    )
+    assert "no2" in plan.chem_station_extraction_variables
+    assert "no2" not in plan.chem_evaluation_variables
+
+
+def test_evaluation_variable_must_be_extracted():
+    config = {
+        "case": {"name": "missing"},
+        "wrf": {"input_dir": "/tmp", "file_pattern": "wrfout_*"},
+        "station_groups": {
+            "met": {"enabled": True, "observation_config": "met.yaml"},
+            "chem": {},
+        },
+        "extraction": {"met": ["temperature"], "chem": []},
+        "evaluation": {"met": ["wind_speed"], "chem": []},
+    }
+    with pytest.raises(ConfigError, match="not extracted"):
+        build_plan(config)

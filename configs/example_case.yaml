@@ -26,6 +26,36 @@ station_groups:
     interpolation: bilinear
     include_met_at_sites: true
 
+# Controls what is extracted from WRF and retained in model output files.
+# These lists are independent from the variables evaluated below.
+extraction:
+  met:
+    - temperature
+    - relative_humidity
+    - wind_speed
+    - wind_direction
+    - precipitation
+    - surface_pressure
+    - pbl_height
+  chem:
+    - pm25
+    - pm10
+    - o3
+    - no2
+    - so2
+    - co
+  # Used only when station_groups.chem.include_met_at_sites is true.
+  met_at_chem_sites:
+    - temperature
+    - relative_humidity
+    - wind_speed
+    - wind_direction
+    - precipitation
+    - surface_pressure
+    - pbl_height
+
+# Controls which extracted variables are matched to observations and evaluated.
+# Each entry must also occur in the corresponding extraction list.
 evaluation:
   met:
     - temperature

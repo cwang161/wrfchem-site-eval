@@ -15,10 +15,25 @@ from .variables import required_wrf_variables
 @dataclass(frozen=True)
 class EvaluationPlan:
     case_name: str
-    met_variables: tuple[str, ...]
-    chem_variables: tuple[str, ...]
-    chem_station_variables: tuple[str, ...]
+    met_evaluation_variables: tuple[str, ...]
+    chem_evaluation_variables: tuple[str, ...]
+    met_extraction_variables: tuple[str, ...]
+    chem_extraction_variables: tuple[str, ...]
+    chem_station_extraction_variables: tuple[str, ...]
     wrf_variables: tuple[str, ...]
+
+    # Backward-compatible names used by earlier package versions.
+    @property
+    def met_variables(self) -> tuple[str, ...]:
+        return self.met_evaluation_variables
+
+    @property
+    def chem_variables(self) -> tuple[str, ...]:
+        return self.chem_evaluation_variables
+
+    @property
+    def chem_station_variables(self) -> tuple[str, ...]:
+        return self.chem_station_extraction_variables
 
 
 def _mapping(value: Any, path: str) -> dict[str, Any]:
@@ -49,15 +64,39 @@ def build_plan(config: dict[str, Any]) -> EvaluationPlan:
         raise ConfigError("'case.name' must be a non-empty string")
 
     evaluation = _mapping(config.get("evaluation"), "evaluation")
-    met_variables = _string_list(evaluation.get("met", []), "evaluation.met")
-    chem_variables = _string_list(evaluation.get("chem", []), "evaluation.chem")
+    met_evaluation = _string_list(evaluation.get("met", []), "evaluation.met")
+    chem_evaluation = _string_list(evaluation.get("chem", []), "evaluation.chem")
+
+    extraction_value = config.get("extraction")
+    if extraction_value is None:
+        # Existing case files continue to work exactly as before.
+        extraction: dict[str, Any] = {}
+    else:
+        extraction = _mapping(extraction_value, "extraction")
+    met_extraction = _string_list(
+        extraction.get("met", met_evaluation), "extraction.met"
+    )
+    chem_extraction = _string_list(
+        extraction.get("chem", chem_evaluation), "extraction.chem"
+    )
 
     station_groups = _mapping(config.get("station_groups"), "station_groups")
     chem_group = _mapping(station_groups.get("chem", {}), "station_groups.chem")
     include_met = bool(chem_group.get("include_met_at_sites", True))
-    chem_station_variables = chem_variables + (met_variables if include_met else [])
+    met_at_chem = _string_list(
+        extraction.get("met_at_chem_sites", met_extraction),
+        "extraction.met_at_chem_sites",
+    ) if include_met else []
+    chem_station_extraction = list(dict.fromkeys(chem_extraction + met_at_chem))
 
-    requested = list(dict.fromkeys(met_variables + chem_station_variables))
+    missing_met = sorted(set(met_evaluation) - set(met_extraction))
+    missing_chem = sorted(set(chem_evaluation) - set(chem_extraction))
+    if missing_met:
+        raise ConfigError(f"evaluation.met variables are not extracted: {missing_met}")
+    if missing_chem:
+        raise ConfigError(f"evaluation.chem variables are not extracted: {missing_chem}")
+
+    requested = list(dict.fromkeys(met_extraction + chem_station_extraction))
     try:
         wrf_variables = required_wrf_variables(requested)
     except KeyError as exc:
@@ -88,8 +127,10 @@ def build_plan(config: dict[str, Any]) -> EvaluationPlan:
 
     return EvaluationPlan(
         case_name=case_name,
-        met_variables=tuple(met_variables),
-        chem_variables=tuple(chem_variables),
-        chem_station_variables=tuple(dict.fromkeys(chem_station_variables)),
+        met_evaluation_variables=tuple(met_evaluation),
+        chem_evaluation_variables=tuple(chem_evaluation),
+        met_extraction_variables=tuple(met_extraction),
+        chem_extraction_variables=tuple(chem_extraction),
+        chem_station_extraction_variables=tuple(chem_station_extraction),
         wrf_variables=tuple(wrf_variables),
     )

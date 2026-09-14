@@ -39,6 +39,12 @@ Copy `configs/example_case.yaml` and the observation templates, then change
 paths, source column names, time zones, requested variables and case name.
 Internal Python modules do not need editing when observation names change.
 
+`extraction.met`, `extraction.chem` and `extraction.met_at_chem_sites` control
+what is read from WRF and saved. `evaluation.met` and `evaluation.chem` are
+independent subsets controlling observation matching, metrics and figures. If
+the `extraction` section is omitted, the evaluation lists are used for backward
+compatibility.
+
 ```bash
 wrfchem-site-eval validate-config my_case.yaml
 wrfchem-site-eval show-plan my_case.yaml

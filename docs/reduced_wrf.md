@@ -8,9 +8,13 @@ original wrfout -> reduced wrfout -> station extraction
 ```
 
 Reduced files retain `Times`, `XLAT`, `XLONG`, all raw dependencies of the
-configured evaluation variables, WRF global projection attributes, and only
+configured `extraction` variables, WRF global projection attributes, and only
 `bottom_top=0` for chemistry. They are ordinary NetCDF files and keep the
 original filenames. Original wrfout files are never changed or deleted.
+
+The variables retained are controlled by `extraction.met`, `extraction.chem`
+and `extraction.met_at_chem_sites`, not by the evaluation lists. This allows a
+larger reusable reduced archive while evaluating only a selected subset.
 
 Configure the optional stage under `wrf.reduction`:
 

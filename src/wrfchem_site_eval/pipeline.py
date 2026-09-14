@@ -106,7 +106,14 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
     observations: dict[str, pd.DataFrame] = {}
     mappings: dict[str, pd.DataFrame] = {}
     active: dict[str, tuple[pd.DataFrame, tuple[str, ...]]] = {}
-    variables = {"met": plan.met_variables, "chem": plan.chem_station_variables}
+    extraction_variables = {
+        "met": plan.met_extraction_variables,
+        "chem": plan.chem_station_extraction_variables,
+    }
+    evaluation_variables = {
+        "met": plan.met_evaluation_variables,
+        "chem": plan.chem_evaluation_variables,
+    }
     for name in ("met", "chem"):
         settings = _group_settings(config, name)
         if not settings.get("enabled", False):
@@ -129,7 +136,7 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
                 current_stations, files[0], str(settings.get("interpolation", "nearest"))
             )
             _write(mappings[name], mapping_file)
-        active[name] = (mappings[name], variables[name])
+        active[name] = (mappings[name], extraction_variables[name])
 
     model: dict[str, pd.DataFrame] = {}
     to_extract: dict[str, tuple[pd.DataFrame, tuple[str, ...]]] = {}
@@ -137,7 +144,7 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
         path = _table_path(root, f"model_{name}", fmt)
         if resume and same_wrf_inputs and path.exists():
             candidate = _read(path)
-            if set(variables[name]).issubset(candidate.columns):
+            if set(extraction_variables[name]).issubset(candidate.columns):
                 model[name] = candidate
             else:
                 to_extract[name] = definition
@@ -194,10 +201,10 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
                 minimum_count=matching.get("model_minimum_count", common_minimum),
                 offset=matching.get("offset"),
             )
-        paired = collocate(obs, mod, variables[name], tolerance=tolerance)
+        paired = collocate(obs, mod, evaluation_variables[name], tolerance=tolerance)
         paired_path = _table_path(root, f"matched_{name}", fmt)
         _write(paired, paired_path)
-        metrics = calculate_metrics(paired, variables[name], plan.case_name)
+        metrics = calculate_metrics(paired, evaluation_variables[name], plan.case_name)
         metrics_path = _table_path(root, f"metrics_{name}", fmt)
         _write(metrics, metrics_path)
         products[f"matched_{name}"] = paired_path
@@ -205,7 +212,7 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
         figure_settings = config.get("figures", {})
         if figure_settings.get("enabled", False):
             figures = create_evaluation_figures(
-                paired, variables[name], plan.case_name, root / "figures" / name
+                paired, evaluation_variables[name], plan.case_name, root / "figures" / name
             )
             for index, figure in enumerate(figures):
                 products[f"figure_{name}_{index:02d}"] = figure

@@ -107,9 +107,15 @@ def main(argv: list[str] | None = None) -> int:
 
     print(json.dumps({
         "case": plan.case_name,
-        "met_station_variables": plan.met_variables,
-        "chem_variables": plan.chem_variables,
-        "chem_station_variables": plan.chem_station_variables,
+        "met_extraction_variables": plan.met_extraction_variables,
+        "chem_extraction_variables": plan.chem_extraction_variables,
+        "met_at_chem_sites": tuple(
+            variable for variable in plan.chem_station_extraction_variables
+            if variable not in plan.chem_extraction_variables
+        ),
+        "chem_station_extraction_variables": plan.chem_station_extraction_variables,
+        "met_evaluation_variables": plan.met_evaluation_variables,
+        "chem_evaluation_variables": plan.chem_evaluation_variables,
         "required_wrf_variables": plan.wrf_variables,
     }, indent=2))
     return 0

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.0 - 2026-09-14
+
+- Separate WRF extraction variable lists from evaluation variable lists.
+- Add independent met, chemistry and met-at-chem-site extraction controls.
+- Keep existing configurations backward compatible when `extraction` is absent.
+- Validate that every evaluated variable is available in extracted outputs.
+
 ## 1.1.0 - 2026-09-14
 
 - Add optional compact WRF preprocessing without modifying original files.
