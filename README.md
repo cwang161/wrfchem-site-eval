@@ -102,5 +102,8 @@ scales and accepted QC flags are configured in YAML rather than internal code.
 See `configs/example_case.yaml`, `configs/observations/` and
 `docs/observation_configuration.md`.
 Reduced-file modes are documented in `docs/reduced_wrf.md`.
-When `wrf.grid_file` is configured, wind extraction can read the static
-`SINALPHA`/`COSALPHA` fields from `geo_em` even when wrfout omits them.
+WRF `U10`/`V10` remain in the native projected-grid coordinates. For both
+nearest and bilinear extraction, station wind speed and direction are derived
+from those grid-relative components. During collocation, observed earth-relative
+wind direction is rotated to the same projected coordinates using the station
+longitude and the WRF Lambert projection parameters, following the AMET method.

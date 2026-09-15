@@ -16,7 +16,8 @@ def test_example_config_includes_met_at_chem_sites():
     assert "temperature" in plan.chem_station_variables
     assert "PM2_5_DRY" in plan.wrf_variables
     assert "T2" in plan.wrf_variables
-    assert "SINALPHA" in plan.wrf_variables
+    assert "U10" in plan.wrf_variables
+    assert "SINALPHA" not in plan.wrf_variables
 
 
 def test_unknown_variable_is_rejected():

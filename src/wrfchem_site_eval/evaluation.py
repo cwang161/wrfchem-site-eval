@@ -11,7 +11,10 @@ import pandas as pd
 from .errors import ConfigError
 
 
-IDENTITY_COLUMNS = {"station_id", "time", "latitude", "longitude", "inside_domain"}
+IDENTITY_COLUMNS = {
+    "station_id", "time", "latitude", "longitude", "inside_domain",
+    "grid_convergence_degrees",
+}
 
 
 def collocate(
@@ -38,16 +41,34 @@ def collocate(
     obs["station_id"] = obs["station_id"].astype(str)
     mod["station_id"] = mod["station_id"].astype(str)
     if tolerance is None:
-        return obs.merge(mod, on=["station_id", "time"], how="inner", validate="one_to_one")
+        paired = obs.merge(mod, on=["station_id", "time"], how="inner", validate="one_to_one")
+        return _rotate_observed_wind_to_grid(paired)
     try:
         delta = pd.Timedelta(tolerance)
     except ValueError as exc:
         raise ConfigError(f"Invalid matching tolerance: {tolerance}") from exc
     obs = obs.sort_values(["time", "station_id"])
     mod = mod.sort_values(["time", "station_id"])
-    return pd.merge_asof(
+    paired = pd.merge_asof(
         obs, mod, on="time", by="station_id", direction="nearest", tolerance=delta
     ).dropna(subset=[column for column in mod if column.startswith("model_")], how="all")
+    return _rotate_observed_wind_to_grid(paired)
+
+
+def _rotate_observed_wind_to_grid(paired: pd.DataFrame) -> pd.DataFrame:
+    """Express observed earth-relative direction in the WRF projected grid."""
+
+    if "obs_wind_direction" not in paired:
+        return paired
+    if "grid_convergence_degrees" not in paired:
+        raise ConfigError(
+            "Wind-direction comparison requires grid_convergence_degrees in the station mapping"
+        )
+    paired = paired.copy()
+    paired["obs_wind_direction"] = (
+        paired["obs_wind_direction"] - paired["grid_convergence_degrees"]
+    ) % 360.0
+    return paired
 
 
 def aggregate_time(

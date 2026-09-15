@@ -18,7 +18,6 @@ from .extraction import (
     discover_wrf_files,
     extract_wrf_timeseries,
     finalize_precipitation,
-    read_static_wind_rotation,
 )
 from .observations import read_observations, station_table
 from .plotting import create_evaluation_figures
@@ -65,10 +64,8 @@ def _file_token(path: Path) -> str:
 def _extract_checkpoint_job(job) -> tuple[str, ...]:
     """Extract all requested station groups from one WRF file."""
 
-    wrf_file, groups, checkpoint_paths, static_fields = job
-    extracted = extract_wrf_timeseries(
-        [wrf_file], groups, finalize=False, static_fields=static_fields
-    )
+    wrf_file, groups, checkpoint_paths = job
+    extracted = extract_wrf_timeseries([wrf_file], groups, finalize=False)
     for name, table in extracted.items():
         _write(table, checkpoint_paths[name])
     return tuple(extracted)
@@ -94,8 +91,6 @@ def run_case(
     grid_file = _resolve(config_file.parent, str(grid_file_value)) if grid_file_value else None
     grid_latitude_variable = wrf.get("grid_latitude_variable")
     grid_longitude_variable = wrf.get("grid_longitude_variable")
-    grid_sinalpha_variable = str(wrf.get("grid_sinalpha_variable", "SINALPHA"))
-    grid_cosalpha_variable = str(wrf.get("grid_cosalpha_variable", "COSALPHA"))
     input_dir = _resolve(config_file.parent, str(wrf.get("input_dir", "")))
     file_pattern = str(wrf.get("file_pattern", "wrfout_*"))
     reduction = wrf.get("reduction", {})
@@ -161,18 +156,6 @@ def run_case(
         "met": plan.met_evaluation_variables,
         "chem": plan.chem_evaluation_variables,
     }
-    requested_variables = set(plan.met_extraction_variables) | set(
-        plan.chem_station_extraction_variables
-    )
-    static_fields = None
-    if grid_file is not None and requested_variables.intersection(
-        {"wind_speed", "wind_direction"}
-    ):
-        static_fields = read_static_wind_rotation(
-            grid_file,
-            sinalpha_variable=grid_sinalpha_variable,
-            cosalpha_variable=grid_cosalpha_variable,
-        )
     for name in ("met", "chem"):
         settings = _group_settings(config, name)
         if not settings.get("enabled", False):
@@ -187,7 +170,11 @@ def run_case(
             expected_ids = set(current_stations["station_id"].astype(str))
             candidate_ids = set(candidate["station_id"].astype(str))
             expected_method = str(settings.get("interpolation", "nearest"))
-            reuse_mapping = expected_ids == candidate_ids and set(candidate["interpolation"]) == {expected_method}
+            reuse_mapping = (
+                expected_ids == candidate_ids
+                and set(candidate["interpolation"]) == {expected_method}
+                and "grid_convergence_degrees" in candidate
+            )
             if reuse_mapping:
                 mappings[name] = candidate
         if not reuse_mapping:
@@ -207,7 +194,10 @@ def run_case(
         path = _table_path(root, f"model_{name}", fmt)
         if resume and same_wrf_inputs and path.exists():
             candidate = _read(path)
-            if set(extraction_variables[name]).issubset(candidate.columns):
+            required_columns = set(extraction_variables[name]) | {
+                "grid_convergence_degrees"
+            }
+            if required_columns.issubset(candidate.columns):
                 model[name] = candidate
             else:
                 to_extract[name] = definition
@@ -229,15 +219,18 @@ def run_case(
                 checkpoint = checkpoint_paths[name]
                 checkpoint_lists[name].append(checkpoint)
                 if resume and checkpoint.exists():
-                    continue
-                else:
-                    missing[name] = to_extract[name]
+                    candidate = _read(checkpoint)
+                    required_columns = set(extraction_variables[name]) | {
+                        "grid_convergence_degrees"
+                    }
+                    if required_columns.issubset(candidate.columns):
+                        continue
+                missing[name] = to_extract[name]
             if missing:
                 jobs.append((
                     wrf_file,
                     missing,
                     {name: checkpoint_paths[name] for name in missing},
-                    static_fields,
                 ))
         if selected_workers == 1 or len(jobs) <= 1:
             for job in jobs:

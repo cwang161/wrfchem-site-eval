@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.0 - 2026-09-15
+
+- Keep WRF `U10`/`V10` and derived model winds in projected-grid coordinates.
+- Interpolate grid-relative U/V components before deriving bilinear wind speed and direction.
+- Calculate the Lambert projection convergence angle directly at each station.
+- Rotate observed earth-relative wind direction into WRF grid coordinates at collocation.
+- Apply the same observation rotation for nearest and bilinear comparisons.
+
 ## 1.7.0 - 2026-09-15
 
 - Read static `SINALPHA` and `COSALPHA` wind-rotation fields from `geo_em`.

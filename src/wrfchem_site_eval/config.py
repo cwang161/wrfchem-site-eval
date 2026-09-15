@@ -141,8 +141,6 @@ def build_plan(config: dict[str, Any]) -> EvaluationPlan:
     for key, value in (
         ("grid_latitude_variable", latitude_name),
         ("grid_longitude_variable", longitude_name),
-        ("grid_sinalpha_variable", wrf.get("grid_sinalpha_variable")),
-        ("grid_cosalpha_variable", wrf.get("grid_cosalpha_variable")),
     ):
         if value is not None and (not isinstance(value, str) or not value.strip()):
             raise ConfigError(f"'wrf.{key}' must be a non-empty string")
@@ -166,7 +164,7 @@ def build_plan(config: dict[str, Any]) -> EvaluationPlan:
         reduction_variables = list(dict.fromkeys(
             list(TIME_VARIABLES) + reduction_variables
         ))
-        optional_dependencies = set(OPTIONAL_WRF_VARIABLES) | {"SINALPHA", "COSALPHA"}
+        optional_dependencies = set(OPTIONAL_WRF_VARIABLES)
         missing_dependencies = sorted(
             set(wrf_variables) - set(reduction_variables) - optional_dependencies
         )

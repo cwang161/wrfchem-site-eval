@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from wrfchem_site_eval.extraction import extract_wrf_timeseries, read_static_wind_rotation
+from wrfchem_site_eval.extraction import extract_wrf_timeseries
 from wrfchem_site_eval.station_mapping import map_nearest
 
 
@@ -79,12 +79,11 @@ def test_vectorized_extraction_derives_variables(tmp_path):
     assert result.iloc[0]["o3"] == pytest.approx(96.22, rel=1e-3)
 
 
-def test_wind_rotation_can_come_from_geo_em(tmp_path):
+def test_model_wind_remains_grid_relative(tmp_path):
     source = write_synthetic_wrf(tmp_path / "wrfout_d01_test")
     with xr.open_dataset(source, decode_times=False) as ds:
         without_rotation = ds.drop_vars(["SINALPHA", "COSALPHA"]).load()
     without_rotation.to_netcdf(source, mode="w")
-    geo = write_synthetic_geo(tmp_path / "geo_em.d01.nc")
     stations = pd.DataFrame({
         "station_id": ["A"], "latitude": [10.0], "longitude": [100.0]
     })
@@ -96,10 +95,32 @@ def test_wind_rotation_can_come_from_geo_em(tmp_path):
     result = extract_wrf_timeseries(
         [source],
         {"met": (mapping, ["wind_speed", "wind_direction"])},
-        static_fields=read_static_wind_rotation(geo),
     )["met"]
-    # sin=1/cos=0 rotates grid-relative (u=3,v=4) to (ue=-4,ve=3).
+    # WRF U10/V10 are kept grid-relative; observation winds are rotated later.
     assert result["wind_speed"].tolist() == pytest.approx([5.0, 5.0])
     assert result["wind_direction"].tolist() == pytest.approx([
-        126.86989764584402, 126.86989764584402
+        216.86989764584402, 216.86989764584402
+    ])
+
+
+def test_bilinear_wind_interpolates_components_before_speed_and_direction(tmp_path):
+    source = write_synthetic_wrf(tmp_path / "wrfout_d01_bilinear_wind")
+    with xr.open_dataset(source, decode_times=False) as ds:
+        changed = ds.load()
+    directions = np.deg2rad(np.array([[350.0, 10.0], [350.0, 10.0]]))
+    changed["U10"].values[:] = -np.sin(directions)
+    changed["V10"].values[:] = -np.cos(directions)
+    changed.to_netcdf(source, mode="w")
+    mapping = pd.DataFrame({
+        "station_id": ["A"], "latitude": [10.5], "longitude": [100.5],
+        "inside_domain": [True], "interpolation": ["bilinear"],
+        "j0": [0], "j1": [1], "i0": [0], "i1": [1],
+        "w00": [0.25], "w01": [0.25], "w10": [0.25], "w11": [0.25],
+    })
+    result = extract_wrf_timeseries(
+        [source], {"met": (mapping, ["wind_speed", "wind_direction"])}
+    )["met"]
+    assert result["wind_direction"].tolist() == pytest.approx([0.0, 0.0], abs=1e-12)
+    assert result["wind_speed"].tolist() == pytest.approx([
+        np.cos(np.deg2rad(10.0)), np.cos(np.deg2rad(10.0))
     ])

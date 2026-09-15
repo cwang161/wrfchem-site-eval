@@ -2,7 +2,12 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
-from wrfchem_site_eval.station_mapping import map_bilinear, map_nearest, read_wrf_grid
+from wrfchem_site_eval.station_mapping import (
+    lambert_convergence_degrees,
+    map_bilinear,
+    map_nearest,
+    read_wrf_grid,
+)
 
 
 @pytest.fixture
@@ -50,3 +55,18 @@ def test_read_geo_em_mass_grid(tmp_path, latlon_grid):
     np.testing.assert_array_equal(actual_lat, lat)
     np.testing.assert_array_equal(actual_lon, lon)
     assert attrs["MAP_PROJ"] == 6
+
+
+def test_lambert_station_convergence_is_calculated_from_longitude():
+    attrs = {
+        "MAP_PROJ": 1,
+        "TRUELAT1": 30.0,
+        "TRUELAT2": 60.0,
+        "STAND_LON": 100.0,
+    }
+    cone = (
+        np.log(np.cos(np.deg2rad(30.0))) - np.log(np.cos(np.deg2rad(60.0)))
+    ) / (
+        np.log(np.tan(np.deg2rad(30.0))) - np.log(np.tan(np.deg2rad(15.0)))
+    )
+    assert lambert_convergence_degrees(110.0, attrs) == pytest.approx(cone * 10.0)

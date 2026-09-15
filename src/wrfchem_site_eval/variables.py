@@ -5,8 +5,8 @@ from __future__ import annotations
 WRF_DEPENDENCIES: dict[str, tuple[str, ...]] = {
     "temperature": ("T2",),
     "relative_humidity": ("Q2", "T2", "PSFC"),
-    "wind_speed": ("U10", "V10", "SINALPHA", "COSALPHA"),
-    "wind_direction": ("U10", "V10", "SINALPHA", "COSALPHA"),
+    "wind_speed": ("U10", "V10"),
+    "wind_direction": ("U10", "V10"),
     "precipitation": ("RAINC", "RAINNC", "RAINSH"),
     "surface_pressure": ("PSFC",),
     "pbl_height": ("PBLH",),

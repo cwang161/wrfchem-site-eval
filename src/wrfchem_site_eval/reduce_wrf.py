@@ -96,7 +96,6 @@ def reduce_wrf_file(
             absent = [
                 name for name in requested
                 if name not in existing and name not in OPTIONAL_WRF_VARIABLES
-                and name not in {"SINALPHA", "COSALPHA"}
             ]
             recorded_source = existing.attrs.get("WRFCHEM_SITE_EVAL_SOURCE")
             recorded_levels = existing.attrs.get("WRFCHEM_SITE_EVAL_LEVELS")
@@ -121,7 +120,6 @@ def reduce_wrf_file(
         missing = [
             name for name in requested
             if name not in source_dataset and name not in OPTIONAL_WRF_VARIABLES
-            and name not in {"SINALPHA", "COSALPHA"}
         ]
         if missing:
             raise ConfigError(f"Required WRF variables missing from {source_path}: {missing}")

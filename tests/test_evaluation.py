@@ -31,6 +31,28 @@ def test_wind_direction_uses_circular_error():
     assert metrics.iloc[0]["bias"] == pytest.approx(20.0)
 
 
+def test_collocation_rotates_observed_wind_to_wrf_grid_coordinates():
+    obs = pd.DataFrame({
+        "station_id": ["A"],
+        "time": [pd.Timestamp("2019-01-01")],
+        "latitude": [40.0],
+        "longitude": [110.0],
+        "wind_speed": [5.0],
+        "wind_direction": [200.0],
+    })
+    model = pd.DataFrame({
+        "station_id": ["A"],
+        "time": [pd.Timestamp("2019-01-01")],
+        "inside_domain": [True],
+        "grid_convergence_degrees": [10.0],
+        "wind_speed": [5.0],
+        "wind_direction": [190.0],
+    })
+    paired = collocate(obs, model, ["wind_speed", "wind_direction"])
+    assert paired.loc[0, "obs_wind_direction"] == pytest.approx(190.0)
+    assert paired.loc[0, "model_wind_direction"] == pytest.approx(190.0)
+
+
 def test_daily_aggregation_minimum_count_and_case_comparison(tmp_path):
     hourly = pd.DataFrame({
         "station_id": ["A"] * 3, "time": pd.date_range("2019-01-01", periods=3, freq="h"),

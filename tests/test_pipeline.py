@@ -98,3 +98,16 @@ def test_complete_case_pipeline(tmp_path):
     # Resume reuses mappings and model tables while rebuilding matching/metrics.
     resumed = run_case(case, resume=True)
     assert resumed["manifest"].exists()
+
+    # Caches created before projected-wind support are invalidated automatically.
+    model_met_path = tmp_path / "output/SYNTHETIC/model_met.csv"
+    legacy_model = pd.read_csv(model_met_path).drop(columns="grid_convergence_degrees")
+    legacy_model.to_csv(model_met_path, index=False)
+    for checkpoint in (tmp_path / "output/SYNTHETIC/.checkpoints").glob("*_met.csv"):
+        legacy_checkpoint = pd.read_csv(checkpoint).drop(
+            columns="grid_convergence_degrees"
+        )
+        legacy_checkpoint.to_csv(checkpoint, index=False)
+    run_case(case, resume=True)
+    refreshed_model = pd.read_csv(model_met_path)
+    assert "grid_convergence_degrees" in refreshed_model

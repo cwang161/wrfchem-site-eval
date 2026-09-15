@@ -10,9 +10,6 @@ wrf:
   grid_file: /path/to/geo_em.d01.nc
   grid_latitude_variable: XLAT_M
   grid_longitude_variable: XLONG_M
-  # Static wind-rotation fields may be read from geo_em instead of wrfout.
-  grid_sinalpha_variable: SINALPHA
-  grid_cosalpha_variable: COSALPHA
   reduction:
     # false: extract directly from input_dir; true: create compact files first.
     enabled: false
@@ -32,8 +29,6 @@ wrf:
       - PSFC
       - U10
       - V10
-      - SINALPHA
-      - COSALPHA
       - RAINC
       - RAINNC
       - RAINSH

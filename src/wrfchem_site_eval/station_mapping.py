@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from math import cos, fabs, log, sin, tan
 
 import numpy as np
 import pandas as pd
@@ -11,6 +12,44 @@ from .errors import ConfigError
 
 
 EARTH_RADIUS_KM = 6371.0
+
+
+def lambert_convergence_degrees(longitude: float, attrs: dict) -> float:
+    """Return the WRF Lambert grid-to-earth rotation angle at a longitude.
+
+    This follows the cone-factor calculation used by WRF-Python and AMET.
+    Positive values mean that grid-relative components must be rotated
+    counter-clockwise by this angle to obtain earth-relative components.
+    """
+
+    true_lat1 = float(attrs["TRUELAT1"])
+    true_lat2 = float(attrs.get("TRUELAT2", true_lat1))
+    stand_lon = float(attrs["STAND_LON"])
+    radians = np.pi / 180.0
+    if fabs(true_lat1 - true_lat2) > 0.1 and fabs(true_lat2 - 90.0) > 0.1:
+        cone = (
+            log(cos(true_lat1 * radians)) - log(cos(true_lat2 * radians))
+        ) / (
+            log(tan((45.0 - fabs(true_lat1) / 2.0) * radians))
+            - log(tan((45.0 - fabs(true_lat2) / 2.0) * radians))
+        )
+    else:
+        cone = sin(fabs(true_lat1) * radians)
+    longitude_delta = (float(longitude) - stand_lon + 180.0) % 360.0 - 180.0
+    return cone * longitude_delta
+
+
+def _station_convergence_degrees(longitude: float, attrs: dict | None) -> float:
+    if not attrs:
+        return 0.0
+    map_proj = int(attrs.get("MAP_PROJ", 0))
+    if map_proj == 1:
+        return lambert_convergence_degrees(longitude, attrs)
+    if map_proj in {0, 3, 6}:
+        return 0.0
+    raise ConfigError(
+        f"Direct station wind rotation is not implemented for WRF MAP_PROJ={map_proj}"
+    )
 
 
 def read_wrf_grid(
@@ -78,7 +117,12 @@ def _inside_grid_boundary(lat0: float, lon0: float, lat: np.ndarray, lon: np.nda
     return bool(np.count_nonzero(crossing & (x_intersection > 0.0)) % 2)
 
 
-def map_nearest(stations: pd.DataFrame, grid_lat: np.ndarray, grid_lon: np.ndarray) -> pd.DataFrame:
+def map_nearest(
+    stations: pd.DataFrame,
+    grid_lat: np.ndarray,
+    grid_lon: np.ndarray,
+    attrs: dict | None = None,
+) -> pd.DataFrame:
     """Find the nearest WRF mass-grid center for every station."""
 
     records: list[dict] = []
@@ -99,6 +143,9 @@ def map_nearest(stations: pd.DataFrame, grid_lat: np.ndarray, grid_lon: np.ndarr
             "nearest_longitude": float(grid_lon[j, i]),
             "distance_km": float(distance[j, i]),
             "interpolation": "nearest",
+            "grid_convergence_degrees": _station_convergence_degrees(
+                float(row.longitude), attrs
+            ),
         })
     return pd.DataFrame.from_records(records)
 
@@ -147,7 +194,7 @@ def map_bilinear(
 ) -> pd.DataFrame:
     """Calculate four WRF-cell indices and bilinear weights for each station."""
 
-    nearest = map_nearest(stations, grid_lat, grid_lon).set_index("station_id")
+    nearest = map_nearest(stations, grid_lat, grid_lon, attrs).set_index("station_id")
     x2d, y2d, projection = _project_grid(grid_lat, grid_lon, attrs)
     x_axis = np.nanmean(x2d, axis=0)
     y_axis = np.nanmean(y2d, axis=1)
@@ -205,7 +252,7 @@ def map_stations(
         wrf_path, latitude_variable, longitude_variable
     )
     if method == "nearest":
-        return map_nearest(stations, grid_lat, grid_lon)
+        return map_nearest(stations, grid_lat, grid_lon, attrs)
     if method == "bilinear":
         return map_bilinear(stations, grid_lat, grid_lon, attrs)
     raise ConfigError("interpolation must be 'nearest' or 'bilinear'")
