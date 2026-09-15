@@ -16,6 +16,8 @@ def write_synthetic_wrf(path: Path) -> Path:
     lon = np.array([[100.0, 101.0], [100.0, 101.0]])
     shape = (2, 2, 2)
     ones = np.ones(shape)
+    pm25_3d = np.stack([ones * 20.0, ones * 30.0, ones * 40.0], axis=1)
+    o3_3d = np.stack([ones * 0.05, ones * 0.06, ones * 0.07], axis=1)
     ds = xr.Dataset(
         {
             "Times": (("Time", "DateStrLen"), chars),
@@ -31,8 +33,8 @@ def write_synthetic_wrf(path: Path) -> Path:
             "RAINC": (("Time", "south_north", "west_east"), np.stack([lat * 0, lat * 0 + 1])),
             "RAINNC": (("Time", "south_north", "west_east"), np.stack([lat * 0 + 2, lat * 0 + 4])),
             "PBLH": (("Time", "south_north", "west_east"), ones * 500.0),
-            "PM2_5_DRY": (("Time", "bottom_top", "south_north", "west_east"), ones[:, None] * 20.0),
-            "o3": (("Time", "bottom_top", "south_north", "west_east"), ones[:, None] * 0.05,
+            "PM2_5_DRY": (("Time", "bottom_top", "south_north", "west_east"), pm25_3d),
+            "o3": (("Time", "bottom_top", "south_north", "west_east"), o3_3d,
                    {"units": "ppmv"}),
         },
         attrs={"MAP_PROJ": 6},

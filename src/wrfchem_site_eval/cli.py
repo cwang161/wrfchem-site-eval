@@ -117,5 +117,6 @@ def main(argv: list[str] | None = None) -> int:
         "met_evaluation_variables": plan.met_evaluation_variables,
         "chem_evaluation_variables": plan.chem_evaluation_variables,
         "required_wrf_variables": plan.wrf_variables,
+        "reduction_variables": plan.reduction_variables,
     }, indent=2))
     return 0

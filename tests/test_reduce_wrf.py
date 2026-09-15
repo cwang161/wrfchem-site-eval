@@ -29,3 +29,25 @@ def test_reduced_wrf_matches_direct_extraction(tmp_path):
     direct = extract_wrf_timeseries([source], {"test": (mapping, canonical)})["test"]
     compact = extract_wrf_timeseries([reduced], {"test": (mapping, canonical)})["test"]
     pd.testing.assert_frame_equal(direct, compact)
+
+
+def test_default_and_per_variable_vertical_levels(tmp_path):
+    source = write_synthetic_wrf(tmp_path / "wrfout_d01_levels")
+    reduced = tmp_path / "reduced_levels.nc"
+    variables = ["Times", "XLAT", "XLONG", "PM2_5_DRY", "o3", "T2", "PSFC"]
+    reduce_wrf_file(
+        source,
+        reduced,
+        variables,
+        default_levels="all",
+        variable_levels={"PM2_5_DRY": 1, "o3": [0, 2]},
+    )
+    with xr.open_dataset(reduced, decode_times=False) as dataset:
+        assert dataset["PM2_5_DRY"].dims == ("Time", "south_north", "west_east")
+        assert np.all(dataset["PM2_5_DRY"].values == 30.0)
+        vertical = [dim for dim in dataset["o3"].dims if dim.startswith("bottom_top")]
+        assert len(vertical) == 1
+        assert dataset["o3"].sizes[vertical[0]] == 2
+        assert np.all(dataset["o3"].isel({vertical[0]: 0}).values == 0.05)
+        assert np.all(dataset["o3"].isel({vertical[0]: 1}).values == 0.07)
+        assert dataset["T2"].dims == ("Time", "south_north", "west_east")

@@ -71,3 +71,47 @@ def test_evaluation_variable_must_be_extracted():
     }
     with pytest.raises(ConfigError, match="not extracted"):
         build_plan(config)
+
+
+def test_explicit_reduction_variables_and_level_overrides():
+    config = {
+        "case": {"name": "levels"},
+        "wrf": {
+            "input_dir": "/tmp", "file_pattern": "wrfout_*",
+            "reduction": {
+                "variables": ["T2", "EXTRA_3D"],
+                "levels": {
+                    "default": "surface",
+                    "variables": {"EXTRA_3D": [0, 2, 4]},
+                },
+            },
+        },
+        "station_groups": {
+            "met": {"enabled": True, "observation_config": "met.yaml"},
+            "chem": {},
+        },
+        "extraction": {"met": ["temperature"], "chem": []},
+        "evaluation": {"met": ["temperature"], "chem": []},
+    }
+    plan = build_plan(config)
+    assert {"Times", "XLAT", "XLONG", "T2", "EXTRA_3D"} == set(
+        plan.reduction_variables
+    )
+
+
+def test_explicit_reduction_variables_require_extraction_dependencies():
+    config = {
+        "case": {"name": "missing_raw"},
+        "wrf": {
+            "input_dir": "/tmp", "file_pattern": "wrfout_*",
+            "reduction": {"variables": ["UNRELATED"]},
+        },
+        "station_groups": {
+            "met": {"enabled": True, "observation_config": "met.yaml"},
+            "chem": {},
+        },
+        "extraction": {"met": ["temperature"], "chem": []},
+        "evaluation": {"met": ["temperature"], "chem": []},
+    }
+    with pytest.raises(ConfigError, match="does not contain extraction dependencies"):
+        build_plan(config)

@@ -9,6 +9,10 @@ can retain only requested variables and surface chemistry in compact NetCDF
 files before the originals are archived or deleted. Both paths use the same
 station extraction engine.
 
+Reduced-file configuration can list raw WRF variables directly and provides a
+global vertical-level selection plus per-variable overrides. Extra archived
+variables do not need to participate in station extraction or evaluation.
+
 ## Implemented workflow
 
 ```text

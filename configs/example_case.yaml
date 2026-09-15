@@ -14,6 +14,35 @@ wrf:
     use_for_extraction: false
     overwrite: false
     compression_level: 2
+    # Raw WRF variable names. Times/XLAT/XLONG are added automatically.
+    # Omit this list to infer the minimum set from extraction below.
+    variables:
+      - T2
+      - Q2
+      - PSFC
+      - U10
+      - V10
+      - SINALPHA
+      - COSALPHA
+      - RAINC
+      - RAINNC
+      - RAINSH
+      - PBLH
+      - PM2_5_DRY
+      - PM10
+      - o3
+      - no2
+      - so2
+      - co
+    levels:
+      # Applied to every retained variable with bottom_top/bottom_top_stag.
+      default: surface
+      # Optional raw-variable overrides. Indices are zero-based.
+      # variables:
+      #   o3: [0, 1, 2]
+      #   PM2_5_DRY: {start: 0, stop: 3, step: 1}
+      #   P: all
+      variables: {}
 
 station_groups:
   met:

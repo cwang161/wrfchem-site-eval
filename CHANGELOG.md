@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0 - 2026-09-15
+
+- Allow `wrf.reduction.variables` to select raw WRF variables independently.
+- Add a default vertical-level selection and per-variable overrides.
+- Support surface, all, one index, index lists and start/stop/step slices.
+- Preserve distinct variable-specific subsets without alignment padding.
+- Validate reduced variables against station-extraction dependencies.
+
 ## 1.2.0 - 2026-09-14
 
 - Separate WRF extraction variable lists from evaluation variable lists.

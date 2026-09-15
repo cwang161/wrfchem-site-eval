@@ -9,7 +9,7 @@ from typing import Any
 import yaml
 
 from .errors import ConfigError
-from .variables import required_wrf_variables
+from .variables import COORDINATE_VARIABLES, OPTIONAL_WRF_VARIABLES, required_wrf_variables
 
 
 @dataclass(frozen=True)
@@ -21,6 +21,7 @@ class EvaluationPlan:
     chem_extraction_variables: tuple[str, ...]
     chem_station_extraction_variables: tuple[str, ...]
     wrf_variables: tuple[str, ...]
+    reduction_variables: tuple[str, ...]
 
     # Backward-compatible names used by earlier package versions.
     @property
@@ -46,6 +47,28 @@ def _string_list(value: Any, path: str) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise ConfigError(f"'{path}' must be a list of strings")
     return value
+
+
+def _validate_level_selection(value: Any, path: str) -> None:
+    if isinstance(value, str) and value in {"surface", "all"}:
+        return
+    if isinstance(value, int) and not isinstance(value, bool):
+        return
+    if (
+        isinstance(value, list) and value
+        and all(isinstance(item, int) and not isinstance(item, bool) for item in value)
+    ):
+        return
+    if isinstance(value, dict):
+        unknown = set(value) - {"start", "stop", "step"}
+        valid_values = all(item is None or isinstance(item, int) for item in value.values())
+        nonzero_step = value.get("step") != 0
+        if not unknown and valid_values and nonzero_step and ("start" in value or "stop" in value):
+            return
+    raise ConfigError(
+        f"'{path}' must be surface, all, an integer, a non-empty integer list, "
+        "or a start/stop/step mapping"
+    )
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
@@ -113,6 +136,38 @@ def build_plan(config: dict[str, Any]) -> EvaluationPlan:
     compression = reduction.get("compression_level", 2)
     if not isinstance(compression, int) or not 0 <= compression <= 9:
         raise ConfigError("'wrf.reduction.compression_level' must be an integer from 0 to 9")
+    configured_reduction_variables = reduction.get("variables")
+    if configured_reduction_variables is None:
+        reduction_variables = list(wrf_variables)
+    else:
+        reduction_variables = _string_list(
+            configured_reduction_variables, "wrf.reduction.variables"
+        )
+        reduction_variables = list(dict.fromkeys(
+            list(COORDINATE_VARIABLES) + reduction_variables
+        ))
+        optional_dependencies = set(OPTIONAL_WRF_VARIABLES) | {"SINALPHA", "COSALPHA"}
+        missing_dependencies = sorted(
+            set(wrf_variables) - set(reduction_variables) - optional_dependencies
+        )
+        if missing_dependencies:
+            raise ConfigError(
+                "wrf.reduction.variables does not contain extraction dependencies: "
+                f"{missing_dependencies}"
+            )
+    levels = _mapping(reduction.get("levels", {}), "wrf.reduction.levels")
+    _validate_level_selection(levels.get("default", "surface"), "wrf.reduction.levels.default")
+    level_overrides = _mapping(
+        levels.get("variables", {}), "wrf.reduction.levels.variables"
+    )
+    unknown_overrides = sorted(set(level_overrides) - set(reduction_variables))
+    if unknown_overrides:
+        raise ConfigError(
+            "Level overrides refer to variables not retained by reduction: "
+            f"{unknown_overrides}"
+        )
+    for variable, selection in level_overrides.items():
+        _validate_level_selection(selection, f"wrf.reduction.levels.variables.{variable}")
     enabled = []
     for group_name in ("met", "chem"):
         group = _mapping(station_groups.get(group_name, {}), f"station_groups.{group_name}")
@@ -133,4 +188,5 @@ def build_plan(config: dict[str, Any]) -> EvaluationPlan:
         chem_extraction_variables=tuple(chem_extraction),
         chem_station_extraction_variables=tuple(chem_station_extraction),
         wrf_variables=tuple(wrf_variables),
+        reduction_variables=tuple(reduction_variables),
     )

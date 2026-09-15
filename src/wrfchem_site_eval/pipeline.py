@@ -78,12 +78,15 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
         if reduction_enabled:
             if reduced_dir is None:
                 raise ConfigError("'wrf.reduction.output_dir' is required when reduction is enabled")
+            levels = reduction.get("levels", {})
             reduced_files = reduce_wrf_files(
                 source_files,
                 reduced_dir,
-                plan.wrf_variables,
+                plan.reduction_variables,
                 overwrite=bool(reduction.get("overwrite", False)),
                 compression_level=int(reduction.get("compression_level", 2)),
+                default_levels=levels.get("default", "surface"),
+                variable_levels=levels.get("variables", {}),
             )
             files = reduced_files if use_reduced else source_files
         else:

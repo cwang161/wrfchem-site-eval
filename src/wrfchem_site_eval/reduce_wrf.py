@@ -7,9 +7,10 @@ exactly the same way as original WRF output.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 import json
 from pathlib import Path
+import re
 
 import numpy as np
 
@@ -19,11 +20,44 @@ from .extraction import discover_wrf_files
 from .variables import OPTIONAL_WRF_VARIABLES
 
 
-def _surface_only(data_array):
+def _vertical_dimension_name(dimension: str, variable: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_]", "_", variable)
+    return f"{dimension}__{safe}"
+
+
+def _select_vertical_levels(data_array, selection, variable: str):
+    """Apply a level selection to WRF bottom_top dimensions."""
+
     result = data_array
     for dimension in tuple(result.dims):
-        if dimension.startswith("bottom_top"):
-            result = result.isel({dimension: 0}, drop=True)
+        if not dimension.startswith("bottom_top") or selection == "all":
+            continue
+        size = result.sizes[dimension]
+        if selection == "surface":
+            indices = 0
+        elif isinstance(selection, int):
+            indices = selection
+        elif isinstance(selection, list):
+            indices = selection
+        elif isinstance(selection, Mapping):
+            level_slice = slice(
+                selection.get("start"), selection.get("stop"), selection.get("step")
+            )
+            indices = np.arange(size)[level_slice].tolist()
+        else:  # Configuration validation should normally catch this first.
+            raise ConfigError(f"Invalid vertical selection for {variable}: {selection}")
+        try:
+            if isinstance(indices, int):
+                result = result.isel({dimension: indices}, drop=True)
+            else:
+                if not indices:
+                    raise ConfigError(f"Vertical selection for {variable} is empty")
+                result = result.isel({dimension: indices})
+                result = result.rename({dimension: _vertical_dimension_name(dimension, variable)})
+        except IndexError as exc:
+            raise ConfigError(
+                f"Vertical selection {selection} is outside {variable}'s {dimension} size {size}"
+            ) from exc
     return result
 
 
@@ -34,8 +68,10 @@ def reduce_wrf_file(
     *,
     overwrite: bool = False,
     compression_level: int = 2,
+    default_levels="surface",
+    variable_levels: Mapping[str, object] | None = None,
 ) -> Path:
-    """Write one compact NetCDF while retaining WRF metadata and surface chemistry."""
+    """Write one compact NetCDF while retaining configured variables and levels."""
 
     try:
         import xarray as xr
@@ -49,6 +85,10 @@ def reduce_wrf_file(
     if source_path == output_path:
         raise ConfigError("Reduced WRF output cannot overwrite its source path")
     requested = tuple(dict.fromkeys(str(name) for name in variables))
+    overrides = dict(variable_levels or {})
+    level_signature = json.dumps(
+        {"default": default_levels, "variables": overrides}, sort_keys=True
+    )
     if output_path.exists() and not overwrite:
         with xr.open_dataset(output_path, decode_times=False) as existing:
             absent = [
@@ -57,7 +97,12 @@ def reduce_wrf_file(
                 and name not in {"SINALPHA", "COSALPHA"}
             ]
             recorded_source = existing.attrs.get("WRFCHEM_SITE_EVAL_SOURCE")
-            if not existing.attrs.get("WRFCHEM_SITE_EVAL_REDUCED") or absent:
+            recorded_levels = existing.attrs.get("WRFCHEM_SITE_EVAL_LEVELS")
+            if (
+                not existing.attrs.get("WRFCHEM_SITE_EVAL_REDUCED")
+                or absent
+                or recorded_levels != level_signature
+            ):
                 raise ConfigError(
                     f"Existing reduced file is incomplete: {output_path}; "
                     "rerun with --overwrite"
@@ -79,13 +124,15 @@ def reduce_wrf_file(
         if missing:
             raise ConfigError(f"Required WRF variables missing from {source_path}: {missing}")
         retained = {
-            name: _surface_only(source_dataset[name])
+            name: _select_vertical_levels(
+                source_dataset[name], overrides.get(name, default_levels), name
+            )
             for name in requested if name in source_dataset
         }
         reduced = xr.Dataset(retained, attrs=dict(source_dataset.attrs))
         reduced.attrs["WRFCHEM_SITE_EVAL_REDUCED"] = 1
         reduced.attrs["WRFCHEM_SITE_EVAL_SOURCE"] = str(source_path)
-        reduced.attrs["WRFCHEM_SITE_EVAL_SURFACE_CHEM"] = 1
+        reduced.attrs["WRFCHEM_SITE_EVAL_LEVELS"] = level_signature
         encoding = {}
         for name, data_array in reduced.data_vars.items():
             if np.issubdtype(data_array.dtype, np.number):
@@ -111,6 +158,8 @@ def reduce_wrf_files(
     *,
     overwrite: bool = False,
     compression_level: int = 2,
+    default_levels="surface",
+    variable_levels: Mapping[str, object] | None = None,
 ) -> list[Path]:
     """Reduce a sequence of WRF files and write a source/output manifest."""
 
@@ -124,6 +173,8 @@ def reduce_wrf_files(
         output = reduce_wrf_file(
             source, destination, variables, overwrite=overwrite,
             compression_level=compression_level,
+            default_levels=default_levels,
+            variable_levels=variable_levels,
         )
         outputs.append(output)
         records.append({
@@ -134,7 +185,10 @@ def reduce_wrf_files(
         })
     manifest = {
         "variables": list(dict.fromkeys(str(name) for name in variables)),
-        "surface_chemistry_only": True,
+        "levels": {
+            "default": default_levels,
+            "variables": dict(variable_levels or {}),
+        },
         "files": records,
     }
     (root / "reduced_wrf_manifest.json").write_text(
@@ -155,6 +209,7 @@ def reduce_from_case_config(config_path: str | Path, *, overwrite: bool = False)
         source_dir = (config_file.parent / source_dir).resolve()
     files = discover_wrf_files(source_dir, str(wrf["file_pattern"]))
     settings = wrf.get("reduction", {})
+    levels = settings.get("levels", {})
     output_value = settings.get("output_dir")
     if not output_value:
         raise ConfigError("'wrf.reduction.output_dir' is required for reduced WRF output")
@@ -164,7 +219,9 @@ def reduce_from_case_config(config_path: str | Path, *, overwrite: bool = False)
     return reduce_wrf_files(
         files,
         output_dir,
-        plan.wrf_variables,
+        plan.reduction_variables,
         overwrite=overwrite,
         compression_level=int(settings.get("compression_level", 2)),
+        default_levels=levels.get("default", "surface"),
+        variable_levels=levels.get("variables", {}),
     )
