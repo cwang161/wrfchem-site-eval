@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.0 - 2026-09-15
+
+- Add `run --workers N` for file-level parallel station extraction.
+- Extract met and chemistry station groups together while opening each WRF file once.
+- Use spawned processes for safer parallel NetCDF/HDF5 access.
+- Preserve resumable per-file checkpoints and bilinear interpolation behavior.
+
 ## 1.5.0 - 2026-09-15
 
 - Add `reduce-wrf --workers N` for file-level parallel reduction.

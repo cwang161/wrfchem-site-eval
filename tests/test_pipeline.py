@@ -1,6 +1,8 @@
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+import xarray as xr
 import yaml
 
 from wrfchem_site_eval.pipeline import run_case
@@ -18,17 +20,31 @@ def test_complete_case_pipeline(tmp_path):
     write_synthetic_wrf(
         wrf_dir / "wrfout_d01_2019-01-01_00:00:00", include_coordinates=False
     )
+    second = write_synthetic_wrf(
+        wrf_dir / "wrfout_d01_2019-01-01_02:00:00", include_coordinates=False
+    )
+    with xr.open_dataset(second, decode_times=False) as source:
+        shifted = source.load()
+    second_times = ["2019-01-01_02:00:00", "2019-01-01_03:00:00"]
+    shifted["Times"] = (
+        ("Time", "DateStrLen"),
+        np.asarray([[c.encode() for c in value] for value in second_times], dtype="S1"),
+    )
+    shifted.to_netcdf(second, mode="w")
     write_synthetic_geo(tmp_path / "geo_em.d01.nc")
-    times = ["2019-01-01 00:00:00", "2019-01-01 01:00:00"]
+    times = [
+        "2019-01-01 00:00:00", "2019-01-01 01:00:00",
+        "2019-01-01 02:00:00", "2019-01-01 03:00:00",
+    ]
     pd.DataFrame({
-        "Time": times, "Site": ["M1", "M1"], "LAT": [10.4, 10.4], "LON": [100.4, 100.4],
-        "Temp": [300.0, 300.0], "Wind": [5.0, 5.0], "Rain": [0.0, 3.0],
+        "Time": times, "Site": ["M1"] * 4, "LAT": [10.4] * 4, "LON": [100.4] * 4,
+        "Temp": [300.0] * 4, "Wind": [5.0] * 4, "Rain": [0.0, 3.0, 3.0, 3.0],
     }).to_csv(tmp_path / "met.csv", index=False)
     pd.DataFrame({
-        "Time": times, "code": ["C1", "C1"], "latitude": [10.4, 10.4],
-        "longitude": [100.4, 100.4], "pm25": [20.0, 20.0],
-        "pm25_qc_flag": ["valid", "valid"], "o3": [96.22, 96.22],
-        "o3_qc_flag": ["valid", "valid"],
+        "Time": times, "code": ["C1"] * 4, "latitude": [10.4] * 4,
+        "longitude": [100.4] * 4, "pm25": [20.0] * 4,
+        "pm25_qc_flag": ["valid"] * 4, "o3": [96.22] * 4,
+        "o3_qc_flag": ["valid"] * 4,
     }).to_csv(tmp_path / "chem.csv", index=False)
     common_columns = {"time": "Time", "latitude": "LAT", "longitude": "LON"}
     _yaml(tmp_path / "met.yaml", {
@@ -69,14 +85,14 @@ def test_complete_case_pipeline(tmp_path):
         "output": {"directory": "output/SYNTHETIC", "format": "csv"},
         "figures": {"enabled": True},
     })
-    products = run_case(case)
+    products = run_case(case, workers=2)
     assert all(path.exists() for path in products.values())
     assert (tmp_path / "reduced_wrf/reduced_wrf_manifest.json").exists()
     model_chem = pd.read_csv(tmp_path / "output/SYNTHETIC/model_chem.csv")
     assert {"pm25", "o3", "temperature", "wind_speed", "precipitation"} <= set(model_chem)
     metrics_chem = pd.read_csv(products["metrics_chem"])
     overall_pm25 = metrics_chem.query("group_type == 'overall' and variable == 'pm25'").iloc[0]
-    assert overall_pm25["n"] == 2
+    assert overall_pm25["n"] == 4
     assert abs(overall_pm25["bias"]) < 1e-12
     assert any(key.startswith("figure_chem") and path.exists() for key, path in products.items())
     # Resume reuses mappings and model tables while rebuilding matching/metrics.

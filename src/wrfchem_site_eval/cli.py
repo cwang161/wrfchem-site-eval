@@ -32,6 +32,10 @@ def _parser() -> argparse.ArgumentParser:
     run = subparsers.add_parser("run", help="Run a complete configured evaluation case")
     run.add_argument("config", help="Path to a case YAML file")
     run.add_argument("--resume", action="store_true", help="Reuse completed mapping/model products")
+    run.add_argument(
+        "--workers", type=int, default=None,
+        help="Number of WRF files to extract concurrently (default: config or 1)",
+    )
     compare = subparsers.add_parser("compare-cases", help="Combine metric tables from cases")
     compare.add_argument("metrics", nargs="+", help="Metric CSV/Parquet files")
     compare.add_argument("--output", required=True, help="Combined CSV/Parquet table")
@@ -72,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
     if args.command == "run":
         try:
-            products = run_case(args.config, resume=args.resume)
+            products = run_case(args.config, resume=args.resume, workers=args.workers)
             print(json.dumps({key: str(value) for key, value in products.items()}, indent=2))
             return 0
         except (ConfigError, ImportError, OSError, ValueError) as exc:

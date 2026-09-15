@@ -96,6 +96,9 @@ def build_plan(config: dict[str, Any]) -> EvaluationPlan:
         extraction: dict[str, Any] = {}
     else:
         extraction = _mapping(extraction_value, "extraction")
+    extraction_workers = extraction.get("workers", 1)
+    if not isinstance(extraction_workers, int) or isinstance(extraction_workers, bool) or extraction_workers < 1:
+        raise ConfigError("'extraction.workers' must be an integer of at least 1")
     met_extraction = _string_list(
         extraction.get("met", met_evaluation), "extraction.met"
     )
@@ -148,6 +151,9 @@ def build_plan(config: dict[str, Any]) -> EvaluationPlan:
     compression = reduction.get("compression_level", 2)
     if not isinstance(compression, int) or not 0 <= compression <= 9:
         raise ConfigError("'wrf.reduction.compression_level' must be an integer from 0 to 9")
+    reduction_workers = reduction.get("workers", 1)
+    if not isinstance(reduction_workers, int) or isinstance(reduction_workers, bool) or reduction_workers < 1:
+        raise ConfigError("'wrf.reduction.workers' must be an integer of at least 1")
     configured_reduction_variables = reduction.get("variables")
     if configured_reduction_variables is None:
         reduction_variables = list(wrf_variables)

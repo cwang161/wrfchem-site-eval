@@ -65,6 +65,8 @@ station_groups:
 # Controls what is extracted from WRF and retained in model output files.
 # These lists are independent from the variables evaluated below.
 extraction:
+  # Number of WRF files sampled concurrently. Bilinear weights are unchanged.
+  workers: 1
   met:
     - temperature
     - relative_humidity

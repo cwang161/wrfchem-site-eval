@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ProcessPoolExecutor
 import json
 import hashlib
+import multiprocessing
 from pathlib import Path
 from typing import Any
 
@@ -55,12 +57,31 @@ def _file_token(path: Path) -> str:
     return hashlib.sha1(value).hexdigest()[:12]
 
 
-def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
+def _extract_checkpoint_job(job) -> tuple[str, ...]:
+    """Extract all requested station groups from one WRF file."""
+
+    wrf_file, groups, checkpoint_paths = job
+    extracted = extract_wrf_timeseries([wrf_file], groups, finalize=False)
+    for name, table in extracted.items():
+        _write(table, checkpoint_paths[name])
+    return tuple(extracted)
+
+
+def run_case(
+    config_path: str | Path,
+    resume: bool = False,
+    workers: int | None = None,
+) -> dict[str, Path]:
     """Run normalization, mapping, extraction, matching and metrics for one case."""
 
     config_file = Path(config_path).resolve()
     config = load_config(config_file)
     plan = build_plan(config)
+    extraction_settings = config.get("extraction", {})
+    configured_workers = int(extraction_settings.get("workers", 1))
+    selected_workers = configured_workers if workers is None else workers
+    if selected_workers < 1:
+        raise ConfigError("workers must be at least 1")
     wrf = config.get("wrf", {})
     grid_file_value = wrf.get("grid_file")
     grid_file = _resolve(config_file.parent, str(grid_file_value)) if grid_file_value else None
@@ -97,7 +118,10 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
                 compression_level=int(reduction.get("compression_level", 2)),
                 default_levels=levels.get("default", "surface"),
                 variable_levels=levels.get("variables", {}),
-                workers=int(reduction.get("workers", 1)),
+                workers=(
+                    selected_workers if workers is not None
+                    else int(reduction.get("workers", 1))
+                ),
             )
             files = reduced_files if use_reduced else source_files
         else:
@@ -171,7 +195,8 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
     if to_extract:
         checkpoint_root = root / ".checkpoints"
         checkpoint_root.mkdir(parents=True, exist_ok=True)
-        pieces: dict[str, list[pd.DataFrame]] = {name: [] for name in to_extract}
+        checkpoint_lists: dict[str, list[Path]] = {name: [] for name in to_extract}
+        jobs = []
         for index, wrf_file in enumerate(files):
             missing: dict[str, tuple[pd.DataFrame, tuple[str, ...]]] = {}
             token = _file_token(wrf_file)
@@ -181,17 +206,30 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
             }
             for name in to_extract:
                 checkpoint = checkpoint_paths[name]
+                checkpoint_lists[name].append(checkpoint)
                 if resume and checkpoint.exists():
-                    pieces[name].append(_read(checkpoint))
+                    continue
                 else:
                     missing[name] = to_extract[name]
             if missing:
-                # All missing groups are handled together, so this WRF file is opened once.
-                extracted = extract_wrf_timeseries([wrf_file], missing, finalize=False)
-                for name, table in extracted.items():
-                    _write(table, checkpoint_paths[name])
-                    pieces[name].append(table)
-        for name, chunks in pieces.items():
+                jobs.append((
+                    wrf_file,
+                    missing,
+                    {name: checkpoint_paths[name] for name in missing},
+                ))
+        if selected_workers == 1 or len(jobs) <= 1:
+            for job in jobs:
+                _extract_checkpoint_job(job)
+        else:
+            # Spawn is safer than fork for netCDF4/HDF5. Each job opens one WRF
+            # file once and extracts every missing station group from it.
+            with ProcessPoolExecutor(
+                max_workers=min(selected_workers, len(jobs)),
+                mp_context=multiprocessing.get_context("spawn"),
+            ) as executor:
+                list(executor.map(_extract_checkpoint_job, jobs))
+        for name, paths in checkpoint_lists.items():
+            chunks = [_read(path) for path in paths]
             table = pd.concat(chunks, ignore_index=True).sort_values(["station_id", "time"])
             duplicate = table.duplicated(["station_id", "time"], keep=False)
             if duplicate.any():
@@ -240,6 +278,7 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
         "config": str(config_file),
         "wrf_files": [str(path) for path in files],
         "grid_file": str(grid_file or files[0]),
+        "extraction_workers": min(selected_workers, len(files)),
         "products": {key: str(value) for key, value in products.items()},
     }
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")

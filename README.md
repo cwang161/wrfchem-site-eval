@@ -56,7 +56,7 @@ compatibility.
 ```bash
 wrfchem-site-eval validate-config my_case.yaml
 wrfchem-site-eval show-plan my_case.yaml
-wrfchem-site-eval run my_case.yaml
+wrfchem-site-eval run my_case.yaml --workers 4
 ```
 
 Optionally create reduced WRF files as a separate step:
