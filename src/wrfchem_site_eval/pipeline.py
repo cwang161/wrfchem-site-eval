@@ -97,6 +97,7 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
                 compression_level=int(reduction.get("compression_level", 2)),
                 default_levels=levels.get("default", "surface"),
                 variable_levels=levels.get("variables", {}),
+                workers=int(reduction.get("workers", 1)),
             )
             files = reduced_files if use_reduced else source_files
         else:

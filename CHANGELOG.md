@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.0 - 2026-09-15
+
+- Add `reduce-wrf --workers N` for file-level parallel reduction.
+- Support `wrf.reduction.workers` in complete case runs.
+- Use independent spawned processes for safer parallel NetCDF/HDF5 access.
+- Record the effective worker count in the reduction manifest.
+
 ## 1.4.0 - 2026-09-15
 
 - Allow station mapping from `geo_em` XLAT_M/XLONG_M.

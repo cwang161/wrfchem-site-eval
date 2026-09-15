@@ -62,7 +62,7 @@ wrfchem-site-eval run my_case.yaml
 Optionally create reduced WRF files as a separate step:
 
 ```bash
-python -m wrfchem_site_eval reduce-wrf my_case.yaml
+python -m wrfchem_site_eval reduce-wrf my_case.yaml --workers 4
 # Equivalent standalone program:
 python scripts/reduce_wrf.py my_case.yaml
 ```

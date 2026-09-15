@@ -18,6 +18,8 @@ wrf:
     use_for_extraction: false
     overwrite: false
     compression_level: 2
+    # Number of wrfout files reduced concurrently. Start with 2-4 on shared HPC storage.
+    workers: 1
     # Raw WRF variable names. Times is added automatically. Grid coordinates
     # come from grid_file and are not copied into every reduced wrfout.
     # Omit this list to infer the minimum set from extraction below.

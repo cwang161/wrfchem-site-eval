@@ -8,7 +8,9 @@ exactly the same way as original WRF output.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from concurrent.futures import ProcessPoolExecutor
 import json
+import multiprocessing
 from pathlib import Path
 import re
 
@@ -160,23 +162,42 @@ def reduce_wrf_files(
     compression_level: int = 2,
     default_levels="surface",
     variable_levels: Mapping[str, object] | None = None,
+    workers: int = 1,
 ) -> list[Path]:
-    """Reduce a sequence of WRF files and write a source/output manifest."""
+    """Reduce WRF files, optionally in separate worker processes."""
 
     sources = [Path(value).expanduser().resolve() for value in files]
+    if workers < 1:
+        raise ConfigError("workers must be at least 1")
     root = Path(output_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
-    outputs = []
-    records = []
-    for source in sources:
-        destination = root / source.name
-        output = reduce_wrf_file(
-            source, destination, variables, overwrite=overwrite,
-            compression_level=compression_level,
-            default_levels=default_levels,
-            variable_levels=variable_levels,
+    requested_variables = tuple(dict.fromkeys(str(name) for name in variables))
+    jobs = [
+        (
+            source,
+            root / source.name,
+            requested_variables,
+            overwrite,
+            compression_level,
+            default_levels,
+            dict(variable_levels or {}),
         )
-        outputs.append(output)
+        for source in sources
+    ]
+    if workers == 1 or len(jobs) <= 1:
+        outputs = [_reduce_wrf_job(job) for job in jobs]
+    else:
+        # executor.map preserves input order, so the manifest remains stable.
+        # HDF5/netCDF libraries are not reliably fork-safe. A spawn context
+        # gives every worker an independent library state.
+        with ProcessPoolExecutor(
+            max_workers=min(workers, len(jobs)),
+            mp_context=multiprocessing.get_context("spawn"),
+        ) as executor:
+            outputs = list(executor.map(_reduce_wrf_job, jobs))
+
+    records = []
+    for source, output in zip(sources, outputs):
         records.append({
             "source": str(source),
             "output": str(output),
@@ -184,7 +205,8 @@ def reduce_wrf_files(
             "output_size_bytes": output.stat().st_size,
         })
     manifest = {
-        "variables": list(dict.fromkeys(str(name) for name in variables)),
+        "variables": list(requested_variables),
+        "workers": min(workers, len(jobs)) if jobs else 0,
         "levels": {
             "default": default_levels,
             "variables": dict(variable_levels or {}),
@@ -197,7 +219,30 @@ def reduce_wrf_files(
     return outputs
 
 
-def reduce_from_case_config(config_path: str | Path, *, overwrite: bool = False) -> list[Path]:
+def _reduce_wrf_job(job) -> Path:
+    """Picklable process-pool entry point for one WRF file."""
+
+    (
+        source, destination, variables, overwrite, compression_level,
+        default_levels, variable_levels,
+    ) = job
+    return reduce_wrf_file(
+        source,
+        destination,
+        variables,
+        overwrite=overwrite,
+        compression_level=compression_level,
+        default_levels=default_levels,
+        variable_levels=variable_levels,
+    )
+
+
+def reduce_from_case_config(
+    config_path: str | Path,
+    *,
+    overwrite: bool = False,
+    workers: int | None = None,
+) -> list[Path]:
     """Create reduced WRF files using the variables and paths in a case YAML."""
 
     config_file = Path(config_path).expanduser().resolve()
@@ -223,6 +268,8 @@ def reduce_from_case_config(config_path: str | Path, *, overwrite: bool = False)
         reduction_variables = list(dict.fromkeys(
             reduction_variables + list(WRF_GRID_VARIABLES)
         ))
+    configured_workers = int(settings.get("workers", 1))
+    selected_workers = configured_workers if workers is None else workers
     return reduce_wrf_files(
         files,
         output_dir,
@@ -231,4 +278,5 @@ def reduce_from_case_config(config_path: str | Path, *, overwrite: bool = False)
         compression_level=int(settings.get("compression_level", 2)),
         default_levels=levels.get("default", "surface"),
         variable_levels=levels.get("variables", {}),
+        workers=selected_workers,
     )

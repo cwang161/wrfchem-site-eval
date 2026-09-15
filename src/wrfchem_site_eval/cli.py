@@ -40,6 +40,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     reduce.add_argument("config", help="Path to a case YAML file")
     reduce.add_argument("--overwrite", action="store_true", help="Replace existing reduced files")
+    reduce.add_argument(
+        "--workers", type=int, default=None,
+        help="Number of WRF files to reduce concurrently (default: config or 1)",
+    )
     return parser
 
 
@@ -58,7 +62,9 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "reduce-wrf":
         try:
-            outputs = reduce_from_case_config(args.config, overwrite=args.overwrite)
+            outputs = reduce_from_case_config(
+                args.config, overwrite=args.overwrite, workers=args.workers
+            )
             print(f"Prepared {len(outputs)} reduced WRF files")
             return 0
         except (ConfigError, ImportError, OSError, ValueError) as exc:

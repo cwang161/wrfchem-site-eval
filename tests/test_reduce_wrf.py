@@ -3,7 +3,7 @@ import pandas as pd
 import xarray as xr
 
 from wrfchem_site_eval.extraction import extract_wrf_timeseries
-from wrfchem_site_eval.reduce_wrf import reduce_wrf_file
+from wrfchem_site_eval.reduce_wrf import reduce_wrf_file, reduce_wrf_files
 from wrfchem_site_eval.station_mapping import map_nearest
 from wrfchem_site_eval.variables import required_wrf_variables
 from test_extraction import write_synthetic_wrf
@@ -51,3 +51,25 @@ def test_default_and_per_variable_vertical_levels(tmp_path):
         assert np.all(dataset["o3"].isel({vertical[0]: 0}).values == 0.05)
         assert np.all(dataset["o3"].isel({vertical[0]: 1}).values == 0.07)
         assert dataset["T2"].dims == ("Time", "south_north", "west_east")
+
+
+def test_reduce_multiple_files_with_workers(tmp_path):
+    (tmp_path / "input").mkdir()
+    sources = [
+        write_synthetic_wrf(tmp_path / f"input/wrfout_d01_2019-01-01_0{hour}:00:00")
+        for hour in range(2)
+    ]
+    output_dir = tmp_path / "parallel"
+    outputs = reduce_wrf_files(
+        sources,
+        output_dir,
+        ["Times", "T2", "PSFC"],
+        workers=2,
+    )
+
+    assert [path.name for path in outputs] == [path.name for path in sources]
+    assert all(path.exists() for path in outputs)
+    manifest = __import__("json").loads(
+        (output_dir / "reduced_wrf_manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["workers"] == 2
