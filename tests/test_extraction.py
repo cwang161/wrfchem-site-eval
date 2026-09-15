@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from wrfchem_site_eval.extraction import extract_wrf_timeseries
+from wrfchem_site_eval.extraction import extract_wrf_timeseries, read_static_wind_rotation
 from wrfchem_site_eval.station_mapping import map_nearest
 
 
@@ -52,6 +52,8 @@ def write_synthetic_geo(path: Path) -> Path:
         {
             "XLAT_M": (("Time", "south_north", "west_east"), lat[None, ...]),
             "XLONG_M": (("Time", "south_north", "west_east"), lon[None, ...]),
+            "SINALPHA": (("Time", "south_north", "west_east"), np.ones((1, 2, 2))),
+            "COSALPHA": (("Time", "south_north", "west_east"), np.zeros((1, 2, 2))),
         },
         attrs={"MAP_PROJ": 6},
     ).to_netcdf(path)
@@ -75,3 +77,29 @@ def test_vectorized_extraction_derives_variables(tmp_path):
     assert result.iloc[1]["precipitation"] == pytest.approx(3.0)
     assert result["pm25"].tolist() == [20.0, 20.0]
     assert result.iloc[0]["o3"] == pytest.approx(96.22, rel=1e-3)
+
+
+def test_wind_rotation_can_come_from_geo_em(tmp_path):
+    source = write_synthetic_wrf(tmp_path / "wrfout_d01_test")
+    with xr.open_dataset(source, decode_times=False) as ds:
+        without_rotation = ds.drop_vars(["SINALPHA", "COSALPHA"]).load()
+    without_rotation.to_netcdf(source, mode="w")
+    geo = write_synthetic_geo(tmp_path / "geo_em.d01.nc")
+    stations = pd.DataFrame({
+        "station_id": ["A"], "latitude": [10.0], "longitude": [100.0]
+    })
+    mapping = map_nearest(
+        stations,
+        np.array([[10.0, 10.0], [11.0, 11.0]]),
+        np.array([[100.0, 101.0], [100.0, 101.0]]),
+    )
+    result = extract_wrf_timeseries(
+        [source],
+        {"met": (mapping, ["wind_speed", "wind_direction"])},
+        static_fields=read_static_wind_rotation(geo),
+    )["met"]
+    # sin=1/cos=0 rotates grid-relative (u=3,v=4) to (ue=-4,ve=3).
+    assert result["wind_speed"].tolist() == pytest.approx([5.0, 5.0])
+    assert result["wind_direction"].tolist() == pytest.approx([
+        126.86989764584402, 126.86989764584402
+    ])

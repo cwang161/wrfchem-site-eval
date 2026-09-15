@@ -65,15 +65,66 @@ def _surface(da, time_index: int) -> np.ndarray:
     return values
 
 
-def _raw(ds, name: str, time_index: int, *, optional: bool = False) -> np.ndarray | None:
+def read_static_wind_rotation(
+    path: str | Path,
+    *,
+    sinalpha_variable: str = "SINALPHA",
+    cosalpha_variable: str = "COSALPHA",
+) -> dict[str, np.ndarray]:
+    """Read static earth-rotation fields from geo_em or another grid file."""
+
+    try:
+        import xarray as xr
+    except ImportError as exc:
+        raise ConfigError("WRF extraction requires xarray and a NetCDF backend") from exc
+    source = Path(path).expanduser().resolve()
+    if not source.is_file():
+        raise ConfigError(f"WRF grid file does not exist: {source}")
+    fields = {}
+    with xr.open_dataset(source, decode_times=False) as ds:
+        for canonical, configured in (
+            ("SINALPHA", sinalpha_variable), ("COSALPHA", cosalpha_variable)
+        ):
+            if configured not in ds:
+                raise ConfigError(f"Grid file has no {configured}: {source}")
+            data = ds[configured]
+            if "Time" in data.dims:
+                data = data.isel(Time=0)
+            values = np.asarray(data.values, dtype=float).squeeze()
+            if values.ndim != 2:
+                raise ConfigError(
+                    f"Grid rotation variable {configured} must be 2-D after Time selection; "
+                    f"got {values.shape}"
+                )
+            fields[canonical] = values
+    if fields["SINALPHA"].shape != fields["COSALPHA"].shape:
+        raise ConfigError("SINALPHA and COSALPHA grid shapes do not match")
+    return fields
+
+
+def _raw(
+    ds,
+    name: str,
+    time_index: int,
+    *,
+    optional: bool = False,
+    static_fields: Mapping[str, np.ndarray] | None = None,
+) -> np.ndarray | None:
     if name not in ds:
+        if static_fields is not None and name in static_fields:
+            return static_fields[name]
         if optional:
             return None
         raise ConfigError(f"WRF variable '{name}' is required but missing")
     return _surface(ds[name], time_index)
 
 
-def _canonical_grid(ds, variable: str, time_index: int) -> np.ndarray:
+def _canonical_grid(
+    ds,
+    variable: str,
+    time_index: int,
+    static_fields: Mapping[str, np.ndarray] | None = None,
+) -> np.ndarray:
     if variable == "temperature":
         return _raw(ds, "T2", time_index)
     if variable == "surface_temperature":
@@ -92,8 +143,12 @@ def _canonical_grid(ds, variable: str, time_index: int) -> np.ndarray:
     if variable in {"wind_speed", "wind_direction"}:
         u = _raw(ds, "U10", time_index)
         v = _raw(ds, "V10", time_index)
-        sin = _raw(ds, "SINALPHA", time_index, optional=True)
-        cos = _raw(ds, "COSALPHA", time_index, optional=True)
+        sin = _raw(
+            ds, "SINALPHA", time_index, optional=True, static_fields=static_fields
+        )
+        cos = _raw(
+            ds, "COSALPHA", time_index, optional=True, static_fields=static_fields
+        )
         if sin is None or cos is None:
             ue, ve = u, v
         else:
@@ -163,6 +218,7 @@ def extract_wrf_timeseries(
     files: Iterable[str | Path],
     groups: Mapping[str, tuple[pd.DataFrame, Iterable[str]]],
     finalize: bool = True,
+    static_fields: Mapping[str, np.ndarray] | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Open each WRF file once and extract every requested station group."""
 
@@ -183,7 +239,9 @@ def extract_wrf_timeseries(
                     record.insert(1, "time", timestamp)
                     for variable in variables:
                         if variable not in cache:
-                            cache[variable] = _canonical_grid(ds, variable, time_index)
+                            cache[variable] = _canonical_grid(
+                                ds, variable, time_index, static_fields
+                            )
                         record[variable] = _sample_grid(cache[variable], mapping)
                     chunks[name].append(record)
     results: dict[str, pd.DataFrame] = {}

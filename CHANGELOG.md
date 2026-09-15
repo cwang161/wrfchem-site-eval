@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.7.0 - 2026-09-15
+
+- Read static `SINALPHA` and `COSALPHA` wind-rotation fields from `geo_em`.
+- Allow reduced and original wrfout files to omit static rotation fields.
+- Share one static rotation grid across all extraction workers.
+- Add configurable geo_em rotation variable names and regression tests.
+
 ## 1.6.0 - 2026-09-15
 
 - Add `run --workers N` for file-level parallel station extraction.

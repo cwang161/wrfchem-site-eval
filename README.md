@@ -102,3 +102,5 @@ scales and accepted QC flags are configured in YAML rather than internal code.
 See `configs/example_case.yaml`, `configs/observations/` and
 `docs/observation_configuration.md`.
 Reduced-file modes are documented in `docs/reduced_wrf.md`.
+When `wrf.grid_file` is configured, wind extraction can read the static
+`SINALPHA`/`COSALPHA` fields from `geo_em` even when wrfout omits them.
