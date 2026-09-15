@@ -4,7 +4,7 @@ import pandas as pd
 import yaml
 
 from wrfchem_site_eval.pipeline import run_case
-from test_extraction import write_synthetic_wrf
+from test_extraction import write_synthetic_geo, write_synthetic_wrf
 
 
 def _yaml(path: Path, data: dict) -> Path:
@@ -15,7 +15,10 @@ def _yaml(path: Path, data: dict) -> Path:
 def test_complete_case_pipeline(tmp_path):
     wrf_dir = tmp_path / "wrf"
     wrf_dir.mkdir()
-    write_synthetic_wrf(wrf_dir / "wrfout_d01_2019-01-01_00:00:00")
+    write_synthetic_wrf(
+        wrf_dir / "wrfout_d01_2019-01-01_00:00:00", include_coordinates=False
+    )
+    write_synthetic_geo(tmp_path / "geo_em.d01.nc")
     times = ["2019-01-01 00:00:00", "2019-01-01 01:00:00"]
     pd.DataFrame({
         "Time": times, "Site": ["M1", "M1"], "LAT": [10.4, 10.4], "LON": [100.4, 100.4],
@@ -49,6 +52,9 @@ def test_complete_case_pipeline(tmp_path):
         "case": {"name": "SYNTHETIC"},
         "wrf": {
             "input_dir": "wrf", "file_pattern": "wrfout_d01_*", "domain": "d01",
+            "grid_file": "geo_em.d01.nc",
+            "grid_latitude_variable": "XLAT_M",
+            "grid_longitude_variable": "XLONG_M",
             "reduction": {
                 "enabled": True, "output_dir": "reduced_wrf", "use_for_extraction": True,
                 "compression_level": 1,

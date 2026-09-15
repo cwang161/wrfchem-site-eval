@@ -9,7 +9,7 @@ from typing import Any
 import yaml
 
 from .errors import ConfigError
-from .variables import COORDINATE_VARIABLES, OPTIONAL_WRF_VARIABLES, required_wrf_variables
+from .variables import TIME_VARIABLES, OPTIONAL_WRF_VARIABLES, required_wrf_variables
 
 
 @dataclass(frozen=True)
@@ -129,6 +129,18 @@ def build_plan(config: dict[str, Any]) -> EvaluationPlan:
     for key in ("input_dir", "file_pattern"):
         if not isinstance(wrf.get(key), str) or not wrf[key].strip():
             raise ConfigError(f"'wrf.{key}' must be a non-empty string")
+    latitude_name = wrf.get("grid_latitude_variable")
+    longitude_name = wrf.get("grid_longitude_variable")
+    if (latitude_name is None) != (longitude_name is None):
+        raise ConfigError(
+            "wrf.grid_latitude_variable and wrf.grid_longitude_variable must be set together"
+        )
+    for key, value in (
+        ("grid_latitude_variable", latitude_name),
+        ("grid_longitude_variable", longitude_name),
+    ):
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise ConfigError(f"'wrf.{key}' must be a non-empty string")
     reduction = _mapping(wrf.get("reduction", {}), "wrf.reduction")
     if reduction.get("enabled", False) or reduction.get("use_for_extraction", False):
         if not isinstance(reduction.get("output_dir"), str) or not reduction["output_dir"].strip():
@@ -144,7 +156,7 @@ def build_plan(config: dict[str, Any]) -> EvaluationPlan:
             configured_reduction_variables, "wrf.reduction.variables"
         )
         reduction_variables = list(dict.fromkeys(
-            list(COORDINATE_VARIABLES) + reduction_variables
+            list(TIME_VARIABLES) + reduction_variables
         ))
         optional_dependencies = set(OPTIONAL_WRF_VARIABLES) | {"SINALPHA", "COSALPHA"}
         missing_dependencies = sorted(

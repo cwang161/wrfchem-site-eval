@@ -34,10 +34,23 @@ wrf:
 ## Variables and vertical levels
 
 `reduction.variables` uses raw names exactly as they appear in wrfout and is
-independent of station extraction and evaluation. `Times`, `XLAT` and `XLONG`
-are always added. If the list is omitted, the minimum raw dependency set is
-inferred from `extraction`. Extra variables not used for station evaluation are
-allowed.
+independent of station extraction and evaluation. `Times` is always added. If
+the list is omitted, the minimum raw dependency set is inferred from
+`extraction`. Extra variables not used for station evaluation are allowed.
+
+Grid coordinates can be read once from static WPS geography instead of copied
+into every reduced file:
+
+```yaml
+wrf:
+  grid_file: /data/WPS/geo_em.d01.nc
+  grid_latitude_variable: XLAT_M
+  grid_longitude_variable: XLONG_M
+```
+
+With `grid_file`, neither XLAT nor XLONG is required in original or reduced
+wrfout. Without `grid_file`, backward-compatible operation uses XLAT/XLONG from
+the first wrfout and automatically retains them when creating reduced files.
 
 `levels.default` applies to every retained variable carrying a `bottom_top` or
 `bottom_top_stag` dimension. Two-dimensional variables ignore it. It accepts:

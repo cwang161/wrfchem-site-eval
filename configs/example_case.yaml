@@ -6,6 +6,10 @@ wrf:
   input_dir: /path/to/BASE2020/wrfout
   file_pattern: "wrfout_d01_*"
   domain: d01
+  # Optional but recommended when wrfout does not contain XLAT/XLONG.
+  grid_file: /path/to/geo_em.d01.nc
+  grid_latitude_variable: XLAT_M
+  grid_longitude_variable: XLONG_M
   reduction:
     # false: extract directly from input_dir; true: create compact files first.
     enabled: false
@@ -14,7 +18,8 @@ wrf:
     use_for_extraction: false
     overwrite: false
     compression_level: 2
-    # Raw WRF variable names. Times/XLAT/XLONG are added automatically.
+    # Raw WRF variable names. Times is added automatically. Grid coordinates
+    # come from grid_file and are not copied into every reduced wrfout.
     # Omit this list to infer the minimum set from extraction below.
     variables:
       - T2

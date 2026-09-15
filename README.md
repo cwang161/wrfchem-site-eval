@@ -13,6 +13,10 @@ Reduced-file configuration can list raw WRF variables directly and provides a
 global vertical-level selection plus per-variable overrides. Extra archived
 variables do not need to participate in station extraction or evaluation.
 
+Station coordinates may come from WRF `XLAT/XLONG` or a static
+`geo_em.d01.nc` `XLAT_M/XLONG_M` grid. When a geo_em file is configured,
+coordinates are not required in wrfout and are not duplicated in reduced files.
+
 ## Implemented workflow
 
 ```text

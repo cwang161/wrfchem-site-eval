@@ -17,7 +17,7 @@ import numpy as np
 from .errors import ConfigError
 from .config import build_plan, load_config
 from .extraction import discover_wrf_files
-from .variables import OPTIONAL_WRF_VARIABLES
+from .variables import OPTIONAL_WRF_VARIABLES, WRF_GRID_VARIABLES
 
 
 def _vertical_dimension_name(dimension: str, variable: str) -> str:
@@ -216,10 +216,17 @@ def reduce_from_case_config(config_path: str | Path, *, overwrite: bool = False)
     output_dir = Path(str(output_value)).expanduser()
     if not output_dir.is_absolute():
         output_dir = (config_file.parent / output_dir).resolve()
+    reduction_variables = list(plan.reduction_variables)
+    if not wrf.get("grid_file"):
+        # Backward compatibility: without a static grid file, reduced outputs
+        # must retain coordinates so station mapping can use the first file.
+        reduction_variables = list(dict.fromkeys(
+            reduction_variables + list(WRF_GRID_VARIABLES)
+        ))
     return reduce_wrf_files(
         files,
         output_dir,
-        plan.reduction_variables,
+        reduction_variables,
         overwrite=overwrite,
         compression_level=int(settings.get("compression_level", 2)),
         default_levels=levels.get("default", "surface"),

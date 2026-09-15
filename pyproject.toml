@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wrfchem-site-eval"
-version = "1.3.0"
+version = "1.4.0"
 description = "Evaluate WRF/WRF-Chem meteorology and chemistry against stations"
 readme = "README.md"
 requires-python = ">=3.10"

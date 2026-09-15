@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
 import pytest
-from wrfchem_site_eval.station_mapping import map_bilinear, map_nearest
+import xarray as xr
+from wrfchem_site_eval.station_mapping import map_bilinear, map_nearest, read_wrf_grid
 
 
 @pytest.fixture
@@ -36,3 +37,16 @@ def test_bilinear_mapping_weights(latlon_grid):
     assert result.loc[0, "w01"] == pytest.approx(0.375)
     assert result.loc[0, "w10"] == pytest.approx(0.125)
     assert result.loc[0, "w11"] == pytest.approx(0.125)
+
+
+def test_read_geo_em_mass_grid(tmp_path, latlon_grid):
+    lat, lon = latlon_grid
+    path = tmp_path / "geo_em.d01.nc"
+    xr.Dataset({
+        "XLAT_M": (("Time", "south_north", "west_east"), lat[None, ...]),
+        "XLONG_M": (("Time", "south_north", "west_east"), lon[None, ...]),
+    }, attrs={"MAP_PROJ": 6}).to_netcdf(path)
+    actual_lat, actual_lon, attrs = read_wrf_grid(path)
+    np.testing.assert_array_equal(actual_lat, lat)
+    np.testing.assert_array_equal(actual_lon, lon)
+    assert attrs["MAP_PROJ"] == 6

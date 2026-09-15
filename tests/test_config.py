@@ -94,7 +94,7 @@ def test_explicit_reduction_variables_and_level_overrides():
         "evaluation": {"met": ["temperature"], "chem": []},
     }
     plan = build_plan(config)
-    assert {"Times", "XLAT", "XLONG", "T2", "EXTRA_3D"} == set(
+    assert {"Times", "T2", "EXTRA_3D"} == set(
         plan.reduction_variables
     )
 

@@ -13,7 +13,11 @@ from .errors import ConfigError
 EARTH_RADIUS_KM = 6371.0
 
 
-def read_wrf_grid(path: str | Path) -> tuple[np.ndarray, np.ndarray, dict]:
+def read_wrf_grid(
+    path: str | Path,
+    latitude_variable: str | None = None,
+    longitude_variable: str | None = None,
+) -> tuple[np.ndarray, np.ndarray, dict]:
     """Read the 2-D WRF latitude/longitude mass grid and global attributes."""
 
     source = Path(path)
@@ -24,11 +28,26 @@ def read_wrf_grid(path: str | Path) -> tuple[np.ndarray, np.ndarray, dict]:
     except ImportError as exc:
         raise ConfigError("WRF grid mapping requires xarray and a NetCDF backend") from exc
     with xr.open_dataset(source, decode_times=False) as ds:
-        for name in ("XLAT", "XLONG"):
+        if (latitude_variable is None) != (longitude_variable is None):
+            raise ConfigError("Both grid latitude and longitude variable names must be set")
+        if latitude_variable is None:
+            pair = next(
+                ((lat_name, lon_name) for lat_name, lon_name in (
+                    ("XLAT", "XLONG"), ("XLAT_M", "XLONG_M"),
+                ) if lat_name in ds and lon_name in ds),
+                None,
+            )
+            if pair is None:
+                raise ConfigError(
+                    f"Grid file has neither XLAT/XLONG nor XLAT_M/XLONG_M: {source}"
+                )
+            latitude_variable, longitude_variable = pair
+        for name in (latitude_variable, longitude_variable):
             if name not in ds:
-                raise ConfigError(f"WRF file has no {name}: {source}")
-        lat = np.asarray(ds["XLAT"].isel(Time=0) if "Time" in ds["XLAT"].dims else ds["XLAT"])
-        lon = np.asarray(ds["XLONG"].isel(Time=0) if "Time" in ds["XLONG"].dims else ds["XLONG"])
+                raise ConfigError(f"Grid file has no {name}: {source}")
+        lat_da, lon_da = ds[latitude_variable], ds[longitude_variable]
+        lat = np.asarray(lat_da.isel(Time=0) if "Time" in lat_da.dims else lat_da)
+        lon = np.asarray(lon_da.isel(Time=0) if "Time" in lon_da.dims else lon_da)
         attrs = dict(ds.attrs)
     if lat.ndim != 2 or lon.shape != lat.shape:
         raise ConfigError(f"XLAT/XLONG must be matching 2-D arrays, got {lat.shape}/{lon.shape}")
@@ -179,8 +198,12 @@ def map_stations(
     stations: pd.DataFrame,
     wrf_path: str | Path,
     method: str = "nearest",
+    latitude_variable: str | None = None,
+    longitude_variable: str | None = None,
 ) -> pd.DataFrame:
-    grid_lat, grid_lon, attrs = read_wrf_grid(wrf_path)
+    grid_lat, grid_lon, attrs = read_wrf_grid(
+        wrf_path, latitude_variable, longitude_variable
+    )
     if method == "nearest":
         return map_nearest(stations, grid_lat, grid_lon)
     if method == "bilinear":

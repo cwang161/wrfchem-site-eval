@@ -24,7 +24,11 @@ WRF_DEPENDENCIES: dict[str, tuple[str, ...]] = {
 }
 
 OPTIONAL_WRF_VARIABLES = {"RAINSH"}
-COORDINATE_VARIABLES = ("Times", "XLAT", "XLONG")
+# Station extraction needs WRF time, but spatial coordinates may instead come
+# from a static geo_em file. XLAT/XLONG are therefore not universal wrfout
+# dependencies.
+TIME_VARIABLES = ("Times",)
+WRF_GRID_VARIABLES = ("XLAT", "XLONG")
 
 
 def required_wrf_variables(canonical_variables: list[str]) -> list[str]:
@@ -33,7 +37,7 @@ def required_wrf_variables(canonical_variables: list[str]) -> list[str]:
         supported = ", ".join(sorted(WRF_DEPENDENCIES))
         raise KeyError(f"Unsupported canonical variables: {unknown}. Supported: {supported}")
 
-    result = set(COORDINATE_VARIABLES)
+    result = set(TIME_VARIABLES)
     for variable in canonical_variables:
         result.update(WRF_DEPENDENCIES[variable])
     return sorted(result)

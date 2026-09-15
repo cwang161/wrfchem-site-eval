@@ -9,7 +9,7 @@ from wrfchem_site_eval.extraction import extract_wrf_timeseries
 from wrfchem_site_eval.station_mapping import map_nearest
 
 
-def write_synthetic_wrf(path: Path) -> Path:
+def write_synthetic_wrf(path: Path, include_coordinates: bool = True) -> Path:
     times = ["2019-01-01_00:00:00", "2019-01-01_01:00:00"]
     chars = np.asarray([[c.encode() for c in value] for value in times], dtype="S1")
     lat = np.array([[10.0, 10.0], [11.0, 11.0]])
@@ -39,7 +39,22 @@ def write_synthetic_wrf(path: Path) -> Path:
         },
         attrs={"MAP_PROJ": 6},
     )
+    if not include_coordinates:
+        ds = ds.drop_vars(["XLAT", "XLONG"])
     ds.to_netcdf(path)
+    return path
+
+
+def write_synthetic_geo(path: Path) -> Path:
+    lat = np.array([[10.0, 10.0], [11.0, 11.0]])
+    lon = np.array([[100.0, 101.0], [100.0, 101.0]])
+    xr.Dataset(
+        {
+            "XLAT_M": (("Time", "south_north", "west_east"), lat[None, ...]),
+            "XLONG_M": (("Time", "south_north", "west_east"), lon[None, ...]),
+        },
+        attrs={"MAP_PROJ": 6},
+    ).to_netcdf(path)
     return path
 
 

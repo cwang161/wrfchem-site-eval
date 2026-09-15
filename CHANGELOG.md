@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0 - 2026-09-15
+
+- Allow station mapping from `geo_em` XLAT_M/XLONG_M.
+- Remove XLAT/XLONG from universal wrfout extraction dependencies.
+- Avoid copying grid coordinates into reduced files when a static grid is configured.
+- Preserve backward compatibility with wrfout XLAT/XLONG when no grid file is set.
+
 ## 1.3.0 - 2026-09-15
 
 - Allow `wrf.reduction.variables` to select raw WRF variables independently.

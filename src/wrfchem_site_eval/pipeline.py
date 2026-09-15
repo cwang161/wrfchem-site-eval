@@ -17,6 +17,7 @@ from .observations import read_observations, station_table
 from .plotting import create_evaluation_figures
 from .reduce_wrf import reduce_wrf_files
 from .station_mapping import map_stations
+from .variables import WRF_GRID_VARIABLES
 
 
 def _resolve(base: Path, value: str) -> Path:
@@ -61,6 +62,10 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
     config = load_config(config_file)
     plan = build_plan(config)
     wrf = config.get("wrf", {})
+    grid_file_value = wrf.get("grid_file")
+    grid_file = _resolve(config_file.parent, str(grid_file_value)) if grid_file_value else None
+    grid_latitude_variable = wrf.get("grid_latitude_variable")
+    grid_longitude_variable = wrf.get("grid_longitude_variable")
     input_dir = _resolve(config_file.parent, str(wrf.get("input_dir", "")))
     file_pattern = str(wrf.get("file_pattern", "wrfout_*"))
     reduction = wrf.get("reduction", {})
@@ -79,10 +84,15 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
             if reduced_dir is None:
                 raise ConfigError("'wrf.reduction.output_dir' is required when reduction is enabled")
             levels = reduction.get("levels", {})
+            reduction_variables = list(plan.reduction_variables)
+            if grid_file is None:
+                reduction_variables = list(dict.fromkeys(
+                    reduction_variables + list(WRF_GRID_VARIABLES)
+                ))
             reduced_files = reduce_wrf_files(
                 source_files,
                 reduced_dir,
-                plan.reduction_variables,
+                reduction_variables,
                 overwrite=bool(reduction.get("overwrite", False)),
                 compression_level=int(reduction.get("compression_level", 2)),
                 default_levels=levels.get("default", "surface"),
@@ -136,7 +146,11 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
                 mappings[name] = candidate
         if not reuse_mapping:
             mappings[name] = map_stations(
-                current_stations, files[0], str(settings.get("interpolation", "nearest"))
+                current_stations,
+                grid_file or files[0],
+                str(settings.get("interpolation", "nearest")),
+                latitude_variable=grid_latitude_variable,
+                longitude_variable=grid_longitude_variable,
             )
             _write(mappings[name], mapping_file)
         active[name] = (mappings[name], extraction_variables[name])
@@ -224,6 +238,7 @@ def run_case(config_path: str | Path, resume: bool = False) -> dict[str, Path]:
         "case": plan.case_name,
         "config": str(config_file),
         "wrf_files": [str(path) for path in files],
+        "grid_file": str(grid_file or files[0]),
         "products": {key: str(value) for key, value in products.items()},
     }
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
