@@ -161,6 +161,7 @@ def reduce_wrf_files(
     default_levels="surface",
     variable_levels: Mapping[str, object] | None = None,
     workers: int = 1,
+    source_root: str | Path | None = None,
 ) -> list[Path]:
     """Reduce WRF files, optionally in separate worker processes."""
 
@@ -169,11 +170,19 @@ def reduce_wrf_files(
         raise ConfigError("workers must be at least 1")
     root = Path(output_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
+    source_base = (
+        Path(source_root).expanduser().resolve()
+        if source_root is not None else None
+    )
     requested_variables = tuple(dict.fromkeys(str(name) for name in variables))
     jobs = [
         (
             source,
-            root / source.name,
+            root / (
+                source.relative_to(source_base)
+                if source_base is not None and source.is_relative_to(source_base)
+                else Path(source.name)
+            ),
             requested_variables,
             overwrite,
             compression_level,
@@ -277,4 +286,5 @@ def reduce_from_case_config(
         default_levels=levels.get("default", "surface"),
         variable_levels=levels.get("variables", {}),
         workers=selected_workers,
+        source_root=source_dir,
     )

@@ -37,11 +37,18 @@ def _relative_humidity_from_wrf(
 
 
 def discover_wrf_files(input_dir: str | Path, pattern: str) -> list[Path]:
-    """Return deterministically ordered WRF files and fail early on an empty input."""
+    """Discover WRF files, recursively when requested by ``pattern``.
+
+    Patterns such as ``*/wrfout_d01_*`` allow one YAML file to span monthly
+    subdirectories.  Overlapping runs are retained here because each run's
+    cumulative precipitation must be differenced independently downstream.
+    """
 
     root = Path(input_dir).expanduser()
     if not root.is_dir():
         raise ConfigError(f"WRF input directory does not exist: {root}")
+    # Keep overlapping runs here.  Precipitation must be differenced within
+    # each run before duplicate timestamps are resolved downstream.
     files = sorted(path for path in root.glob(pattern) if path.is_file())
     if not files:
         raise ConfigError(f"No WRF files match {root / pattern}")
@@ -184,7 +191,11 @@ def extract_wrf_timeseries(
         import xarray as xr
     except ImportError as exc:
         raise ConfigError("WRF extraction requires xarray and a NetCDF backend") from exc
-    chunks: dict[str, list[pd.DataFrame]] = {name: [] for name in groups}
+    # Keep chunks separated by source-run directory.  Each monthly/restart
+    # run has its own cumulative precipitation counter.
+    chunks: dict[str, dict[Path, list[pd.DataFrame]]] = {
+        name: {} for name in groups
+    }
     for value in files:
         source = Path(value)
         with xr.open_dataset(source, decode_times=False) as ds:
@@ -229,16 +240,21 @@ def extract_wrf_timeseries(
                                 ds, variable, time_index
                             )
                         record[variable] = _sample_grid(cache[variable], mapping)
-                    chunks[name].append(record)
+                    chunks[name].setdefault(source.parent, []).append(record)
     results: dict[str, pd.DataFrame] = {}
-    for name, pieces in chunks.items():
-        if not pieces:
+    for name, chunks_by_run in chunks.items():
+        if not chunks_by_run:
             results[name] = pd.DataFrame()
             continue
-        combined = pd.concat(pieces, ignore_index=True)
-        duplicate = combined.duplicated(["station_id", "time"], keep=False)
-        if duplicate.any():
-            examples = combined.loc[duplicate, ["station_id", "time"]].head(3).to_dict("records")
-            raise ConfigError(f"Duplicate WRF station/time records; examples: {examples}")
-        results[name] = finalize_precipitation(combined) if finalize else combined
+        # First finalize precipitation independently within each source run.
+        run_tables = []
+        for run_path in sorted(chunks_by_run):
+            run_table = pd.concat(chunks_by_run[run_path], ignore_index=True)
+            run_tables.append(finalize_precipitation(run_table) if finalize else run_table)
+        combined = pd.concat(run_tables, ignore_index=True)
+        # Earlier paths have priority (e.g. 01 over 02) for overlapping
+        # timestamps.  This is performed after precipitation differencing.
+        combined = combined.drop_duplicates(["station_id", "time"], keep="first")
+        combined = combined.sort_values(["station_id", "time"])
+        results[name] = combined
     return results

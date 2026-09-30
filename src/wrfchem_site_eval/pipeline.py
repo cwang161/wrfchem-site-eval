@@ -75,6 +75,7 @@ def run_case(
     config_path: str | Path,
     resume: bool = False,
     workers: int | None = None,
+    extract_only: bool = False,
 ) -> dict[str, Path]:
     """Run normalization, mapping, extraction, matching and metrics for one case."""
 
@@ -126,6 +127,7 @@ def run_case(
                     selected_workers if workers is not None
                     else int(reduction.get("workers", 1))
                 ),
+                source_root=input_dir,
             )
             files = reduced_files if use_reduced else source_files
         else:
@@ -253,6 +255,18 @@ def run_case(
             table = finalize_precipitation(table)
             model[name] = table
             _write(table, _table_path(root, f"model_{name}", fmt))
+
+    if extract_only:
+        return {
+            **{
+                f"mapping_{name}": _table_path(root, f"station_mapping_{name}", "csv")
+                for name in active
+            },
+            **{
+                f"model_{name}": _table_path(root, f"model_{name}", fmt)
+                for name in active
+            },
+        }
 
     products: dict[str, Path] = {}
     matching = config.get("matching", {})
