@@ -107,3 +107,6 @@ nearest and bilinear extraction, station wind speed and direction are derived
 from those grid-relative components. During collocation, observed earth-relative
 wind direction is rotated to the same projected coordinates using the station
 longitude and the WRF Lambert projection parameters, following the AMET method.
+For bilinear relative humidity, `T2`, `Q2`, and `PSFC` are interpolated to the
+station first and RH is then derived there, matching the AMET interpolation
+workflow while retaining this package's established RH formula.

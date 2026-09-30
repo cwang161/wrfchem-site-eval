@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 import re
 
@@ -16,6 +16,24 @@ GAS_MOLAR_MASS = {"o3": 48.0, "no2": 46.0055, "so2": 64.066, "co": 28.01,
                   "no": 30.006, "nh3": 17.031}
 CHEM_TARGET_UNITS = {"co": "mg_m-3"}
 R_UNIVERSAL = 8.314462618
+
+
+def _relative_humidity_from_wrf(
+    mixing_ratio: np.ndarray,
+    temperature: np.ndarray,
+    pressure: np.ndarray,
+) -> np.ndarray:
+    """Calculate RH after station sampling using the legacy package formula.
+
+    Q2 is the water-vapor mixing ratio (kg kg-1), T2 is in K, and PSFC is
+    in Pa. The returned relative humidity is a fraction from 0 to 1.
+    """
+
+    vapor_pressure = mixing_ratio * pressure / (0.622 + 0.378 * mixing_ratio)
+    saturation_vapor_pressure = 611.2 * np.exp(
+        17.67 * (temperature - 273.15) / (temperature - 29.65)
+    )
+    return np.clip(vapor_pressure / saturation_vapor_pressure, 0.0, 1.0)
 
 
 def discover_wrf_files(input_dir: str | Path, pattern: str) -> list[Path]:
@@ -92,13 +110,6 @@ def _canonical_grid(
         return _raw(ds, "PSFC", time_index)
     if variable == "pbl_height":
         return _raw(ds, "PBLH", time_index)
-    if variable == "relative_humidity":
-        q = _raw(ds, "Q2", time_index)
-        t = _raw(ds, "T2", time_index)
-        p = _raw(ds, "PSFC", time_index)
-        vapor_pressure = q * p / (0.622 + 0.378 * q)
-        saturation = 611.2 * np.exp(17.67 * (t - 273.15) / (t - 29.65))
-        return np.clip(vapor_pressure / saturation, 0.0, 1.0)
     if variable in {"wind_speed", "wind_direction"}:
         u = _raw(ds, "U10", time_index)
         v = _raw(ds, "V10", time_index)
@@ -188,6 +199,18 @@ def extract_wrf_timeseries(
                     record = mapping[identity].copy()
                     record.insert(1, "time", timestamp)
                     for variable in variables:
+                        if variable == "relative_humidity":
+                            if "__rh_q2" not in cache:
+                                cache["__rh_q2"] = _raw(ds, "Q2", time_index)
+                                cache["__rh_t2"] = _raw(ds, "T2", time_index)
+                                cache["__rh_psfc"] = _raw(ds, "PSFC", time_index)
+                            station_q = _sample_grid(cache["__rh_q2"], mapping)
+                            station_t = _sample_grid(cache["__rh_t2"], mapping)
+                            station_p = _sample_grid(cache["__rh_psfc"], mapping)
+                            record[variable] = _relative_humidity_from_wrf(
+                                station_q, station_t, station_p
+                            )
+                            continue
                         if variable in {"wind_speed", "wind_direction"}:
                             if "__grid_u" not in cache:
                                 cache["__grid_u"] = _raw(ds, "U10", time_index)

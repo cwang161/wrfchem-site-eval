@@ -5,7 +5,10 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from wrfchem_site_eval.extraction import extract_wrf_timeseries
+from wrfchem_site_eval.extraction import (
+    _relative_humidity_from_wrf,
+    extract_wrf_timeseries,
+)
 from wrfchem_site_eval.station_mapping import map_nearest
 
 
@@ -124,3 +127,30 @@ def test_bilinear_wind_interpolates_components_before_speed_and_direction(tmp_pa
     assert result["wind_speed"].tolist() == pytest.approx([
         np.cos(np.deg2rad(10.0)), np.cos(np.deg2rad(10.0))
     ])
+
+
+def test_bilinear_humidity_interpolates_inputs_before_derivation(tmp_path):
+    source = write_synthetic_wrf(tmp_path / "wrfout_d01_bilinear_rh")
+    with xr.open_dataset(source, decode_times=False) as ds:
+        changed = ds.load()
+    temperatures = np.array([[280.0, 300.0], [280.0, 300.0]])
+    changed["T2"].values[:] = temperatures
+    changed.to_netcdf(source, mode="w")
+    mapping = pd.DataFrame({
+        "station_id": ["A"], "latitude": [10.5], "longitude": [100.5],
+        "inside_domain": [True], "interpolation": ["bilinear"],
+        "j0": [0], "j1": [1], "i0": [0], "i1": [1],
+        "w00": [0.25], "w01": [0.25], "w10": [0.25], "w11": [0.25],
+    })
+    result = extract_wrf_timeseries(
+        [source], {"met": (mapping, ["relative_humidity"])}
+    )["met"]
+    expected = _relative_humidity_from_wrf(
+        np.array([0.01]), np.array([290.0]), np.array([100000.0])
+    )[0]
+    grid_then_average = np.mean(_relative_humidity_from_wrf(
+        np.full(4, 0.01), np.array([280.0, 300.0, 280.0, 300.0]),
+        np.full(4, 100000.0),
+    ))
+    assert result["relative_humidity"].tolist() == pytest.approx([expected, expected])
+    assert result.iloc[0]["relative_humidity"] != pytest.approx(grid_then_average)

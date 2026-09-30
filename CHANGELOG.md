@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.0 - 2026-09-30
+
+- Interpolate `T2`, `Q2`, and `PSFC` before deriving station relative humidity.
+- Retain the established package RH formula after interpolation.
+- Keep nearest-neighbor humidity behavior and add a bilinear regression test.
+
 ## 1.8.0 - 2026-09-15
 
 - Keep WRF `U10`/`V10` and derived model winds in projected-grid coordinates.
