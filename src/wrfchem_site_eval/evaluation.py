@@ -22,6 +22,7 @@ def collocate(
     model: pd.DataFrame,
     variables: Iterable[str],
     tolerance: str | None = None,
+    rotate_observed_wind_to_grid: bool = True,
 ) -> pd.DataFrame:
     """Join observations to model output by station and time.
 
@@ -42,7 +43,7 @@ def collocate(
     mod["station_id"] = mod["station_id"].astype(str)
     if tolerance is None:
         paired = obs.merge(mod, on=["station_id", "time"], how="inner", validate="one_to_one")
-        return _rotate_observed_wind_to_grid(paired)
+        return _rotate_observed_wind_to_grid(paired) if rotate_observed_wind_to_grid else paired
     try:
         delta = pd.Timedelta(tolerance)
     except ValueError as exc:
@@ -52,7 +53,7 @@ def collocate(
     paired = pd.merge_asof(
         obs, mod, on="time", by="station_id", direction="nearest", tolerance=delta
     ).dropna(subset=[column for column in mod if column.startswith("model_")], how="all")
-    return _rotate_observed_wind_to_grid(paired)
+    return _rotate_observed_wind_to_grid(paired) if rotate_observed_wind_to_grid else paired
 
 
 def _rotate_observed_wind_to_grid(paired: pd.DataFrame) -> pd.DataFrame:

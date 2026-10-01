@@ -286,7 +286,10 @@ def run_case(
                 minimum_count=matching.get("model_minimum_count", common_minimum),
                 offset=matching.get("offset"),
             )
-        paired = collocate(obs, mod, evaluation_variables[name], tolerance=tolerance)
+        paired = collocate(
+            obs, mod, evaluation_variables[name], tolerance=tolerance,
+            rotate_observed_wind_to_grid=matching.get("rotate_observed_wind_to_grid", True),
+        )
         paired_path = _table_path(root, f"matched_{name}", fmt)
         _write(paired, paired_path)
         metrics = calculate_metrics(paired, evaluation_variables[name], plan.case_name)

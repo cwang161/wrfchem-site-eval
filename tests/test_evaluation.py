@@ -51,6 +51,14 @@ def test_collocation_rotates_observed_wind_to_wrf_grid_coordinates():
     paired = collocate(obs, model, ["wind_speed", "wind_direction"])
     assert paired.loc[0, "obs_wind_direction"] == pytest.approx(190.0)
     assert paired.loc[0, "model_wind_direction"] == pytest.approx(190.0)
+    for tolerance in (None, "1h"):
+        unrotated = collocate(
+            obs, model.drop(columns="grid_convergence_degrees"),
+            ["wind_speed", "wind_direction"], tolerance=tolerance,
+            rotate_observed_wind_to_grid=False,
+        )
+        assert unrotated.loc[0, "obs_wind_direction"] == pytest.approx(200.0)
+        assert unrotated.loc[0, "obs_wind_speed"] == pytest.approx(5.0)
 
 
 def test_daily_aggregation_minimum_count_and_case_comparison(tmp_path):

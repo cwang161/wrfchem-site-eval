@@ -86,6 +86,10 @@ def build_plan(config: dict[str, Any]) -> EvaluationPlan:
     if not isinstance(case_name, str) or not case_name.strip():
         raise ConfigError("'case.name' must be a non-empty string")
 
+    matching = _mapping(config.get("matching", {}), "matching")
+    if not isinstance(matching.get("rotate_observed_wind_to_grid", True), bool):
+        raise ConfigError("matching.rotate_observed_wind_to_grid must be true or false")
+
     evaluation = _mapping(config.get("evaluation"), "evaluation")
     met_evaluation = _string_list(evaluation.get("met", []), "evaluation.met")
     chem_evaluation = _string_list(evaluation.get("chem", []), "evaluation.chem")

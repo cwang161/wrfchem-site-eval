@@ -115,6 +115,8 @@ output:
 # Exact hourly matching by default. Set frequency: 1D for daily evaluation;
 # precipitation is summed while other numeric variables are averaged.
 matching:
+  # false only when observed directions are already grid-relative.
+  rotate_observed_wind_to_grid: true
   tolerance: null
   frequency: null
   # For combined hourly ISD + daily GSOD use: {default: 20, precipitation: 1}
