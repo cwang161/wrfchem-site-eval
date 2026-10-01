@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any
 
@@ -28,14 +29,14 @@ def _resolve(base: Path, value: str) -> Path:
     return path if path.is_absolute() else (base / path).resolve()
 
 
-def _read_table(path: Path, file_format: str) -> pd.DataFrame:
+def _read_table(path: Path, file_format: str, coordinate_columns=()) -> pd.DataFrame:
     if not path.is_file():
         raise ConfigError(f"Observation file does not exist: {path}")
     fmt = file_format.lower()
     if fmt == "auto":
         fmt = path.suffix.lower().lstrip(".")
     if fmt in {"csv", "txt"}:
-        return pd.read_csv(path, low_memory=False)
+        return pd.read_csv(path, low_memory=False, dtype={name: "string" for name in coordinate_columns})
     if fmt in {"xlsx", "xls"}:
         return pd.read_excel(path)
     if fmt == "parquet":
@@ -93,7 +94,12 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
         if not isinstance(sources, list) or not sources:
             raise ConfigError("combined_sources requires a non-empty 'sources' list")
         tables = [read_observations(_resolve(path.parent, str(source))) for source in sources]
+        precision = {}
+        for table in tables:
+            for key, digits in table.attrs.get("coordinate_precision", {}).items():
+                precision.setdefault(key, digits)
         combined = pd.concat(tables, ignore_index=True, sort=False)
+        combined.attrs["coordinate_precision"] = precision
         # Validate coordinates before coalescing coincident station/time rows.
         coordinate_settings = config.get("station_coordinates", {})
         if "tolerance_m" in coordinate_settings or coordinate_settings.get("method") == "rounding":
@@ -113,7 +119,9 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
             "Supported profiles: combined_wide, combined_sources, chem_qc, isd_hourly_met"
         )
     source = _resolve(path.parent, str(dataset.get("file", "")))
-    raw = _read_table(source, str(dataset.get("format", "auto")))
+    columns = config.get("columns", {})
+    coordinate_columns = [columns[key] for key in ("latitude", "longitude") if columns.get(key)]
+    raw = _read_table(source, str(dataset.get("format", "auto")), coordinate_columns)
     raw = raw.replace(config.get("missing_values", []), np.nan)
 
     columns = config.get("columns", {})
@@ -181,6 +189,12 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
         if source_column in raw.columns:
             out[canonical] = raw[source_column].values
 
+    precision = {}
+    for axis in ("latitude", "longitude"):
+        for station, value in zip(out["station_id"], raw[required[axis]]):
+            if pd.notna(value):
+                precision.setdefault((str(station), axis), max(0, -Decimal(str(value).strip()).as_tuple().exponent))
+    out.attrs["coordinate_precision"] = precision
     out = _apply_duplicate_policy(out, config.get("duplicate_policy", "error"))
     return out.sort_values(["station_id", "time"]).reset_index(drop=True)
 
@@ -239,15 +253,21 @@ def _harmonize_station_coordinates(
     if method == "distance":
         outside = distance > tolerance
     else:
-        # Decimal ROUND_HALF_UP gives conventional rounding at ties.
-        from decimal import Decimal, ROUND_HALF_UP
-        def rounded(values):
-            return values.map(lambda value: Decimal(str(value)).quantize(
-                Decimal("0.01"), rounding=ROUND_HALF_UP))
-        outside = (
-            (rounded(result["latitude"]) != rounded(reference_coords["latitude"]))
-            | (rounded(result["longitude"]) != rounded(reference_coords["longitude"]))
-        ).to_numpy()
+        # Use each reference station/axis's original written precision.
+        # For manually supplied tables, infer precision from the numeric value.
+        precision = observations.attrs.get("coordinate_precision", {})
+        outside = np.zeros(len(result), dtype=bool)
+        for axis in ("latitude", "longitude"):
+            for index, (station, value, ref) in enumerate(zip(
+                result["station_id"], result[axis], reference_coords[axis]
+            )):
+                digits = precision.get((str(station), axis),
+                    max(0, -Decimal(str(ref)).as_tuple().exponent))
+                quantum = Decimal(1).scaleb(-digits)
+                outside[index] |= (
+                    Decimal(str(value)).quantize(quantum, rounding=ROUND_HALF_UP)
+                    != Decimal(str(ref)).quantize(quantum, rounding=ROUND_HALF_UP)
+                )
     report = result.loc[outside, ["station_id", "latitude", "longitude"]].copy()
     report["reference_latitude"] = reference_coords.loc[outside, "latitude"]
     report["reference_longitude"] = reference_coords.loc[outside, "longitude"]

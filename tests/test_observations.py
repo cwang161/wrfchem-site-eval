@@ -168,7 +168,7 @@ def test_coordinate_conflicts_use_reference_and_report_all(capsys):
 def test_coordinate_rounding_and_conflict_reporting(capsys):
     from wrfchem_site_eval.observations import _harmonize_station_coordinates
     data = pd.DataFrame({"station_id": ["A", "A", "B", "B"],
-        "latitude": [57.19, 57.189567, 40.0, 40.02],
+        "latitude": [57.19, 57.189567, 40.0, 40.2],
         "longitude": [65.324, 65.3243, 100., 100.]})
     result = _harmonize_station_coordinates(data, 0, on_conflict="use_reference", method="rounding")
     assert result.latitude.tolist() == [57.19, 57.19, 40., 40.]
@@ -177,3 +177,28 @@ def test_coordinate_rounding_and_conflict_reporting(capsys):
     with pytest.raises(ConfigError):
         _harmonize_station_coordinates(data, 0, method="rounding")
     assert "B," in capsys.readouterr().out
+
+
+def test_rounding_uses_reference_axis_precision():
+    from wrfchem_site_eval.observations import _harmonize_station_coordinates
+    data = pd.DataFrame({"station_id": ["A", "A"],
+                         "latitude": [57.19, 57.189567],
+                         "longitude": [65.324, 65.3243]})
+    data.attrs["coordinate_precision"] = {("A", "latitude"): 2, ("A", "longitude"): 3}
+    result = _harmonize_station_coordinates(data, 0, method="rounding")
+    assert result.longitude.tolist() == [65.324, 65.324]
+    data.loc[1, "longitude"] = 65.3246
+    with pytest.raises(ConfigError):
+        _harmonize_station_coordinates(data, 0, method="rounding")
+
+
+def test_csv_preserves_coordinate_trailing_zero_precision(tmp_path):
+    (tmp_path / "obs.csv").write_text("station,date,lat,lon\nA,2019-01-01,57.190,65.32\n")
+    path = _write_yaml(tmp_path / "obs.yaml", {
+        "dataset": {"profile": "combined_wide", "file": "obs.csv"},
+        "columns": {"station_id": "station", "time": "date", "latitude": "lat", "longitude": "lon"},
+        "variables": {},
+    })
+    result = read_observations(path)
+    assert result.attrs["coordinate_precision"][("A", "latitude")] == 3
+    assert result.attrs["coordinate_precision"][("A", "longitude")] == 2
