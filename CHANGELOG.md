@@ -1,5 +1,11 @@
 # Changelog
 
+## GSOD precipitation end-time alignment
+
+- Optionally label daily GSOD precipitation by UTC date plus EOD hours.
+- Default missing EOD to 24 hours and print all affected rows.
+- Preserve uppercase GSOD QC attributes and filter all precipitation (including zero) by accepted attributes without inferring trace.
+
 ## Observation configuration update
 
 - Support only combined_wide and combined_sources observation profiles.

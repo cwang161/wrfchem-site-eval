@@ -139,6 +139,36 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
         "latitude": pd.to_numeric(raw[required["latitude"]], errors="coerce"),
         "longitude": pd.to_numeric(raw[required["longitude"]], errors="coerce"),
     })
+    eod_settings = config.get("precipitation_time", {})
+    if eod_settings.get("reset_using_eod", False):
+        # This source represents daily precipitation only; do not move other observations.
+        if set(config.get("variables", {})) - {"precipitation", "precipitation_daily"} or config.get("derived"):
+            raise ConfigError("EOD time reset requires a precipitation-only observation source")
+        column = eod_settings.get("eod_column", "EOD")
+        if column not in raw.columns:
+            raise ConfigError(f"Required EOD column '{column}' is missing")
+        hours = pd.to_numeric(raw[column], errors="coerce")
+        missing_eod = raw[column].isna() | raw[column].astype("string").str.strip().eq("").fillna(False)
+        invalid = (~missing_eod) & (hours.isna() | ~np.isfinite(hours) | (hours < 0) | (hours > 24))
+        if invalid.any():
+            raise ConfigError(f"Invalid EOD hours in {int(invalid.sum())} rows; expected 0 to 24")
+        fallback = float(eod_settings.get("missing_eod_hours", 24))
+        if not np.isfinite(fallback) or not 0 <= fallback <= 24:
+            raise ConfigError("missing_eod_hours must be finite and between 0 and 24")
+        hours = hours.mask(missing_eod, fallback)
+        settings = config.get("time", {})
+        if settings.get("timezone", "UTC") != "UTC":
+            raise ConfigError("EOD dates must use time.timezone: UTC")
+        utc_settings = dict(settings, timezone="UTC", output_timezone="UTC", drop_timezone=False)
+        dates = _canonical_time(raw[required["time"]], utc_settings).dt.normalize()
+        ends = dates + pd.to_timedelta(hours, unit="h")
+        ends = ends.dt.tz_convert(settings.get("output_timezone", "UTC"))
+        if settings.get("drop_timezone", True):
+            ends = ends.dt.tz_localize(None)
+        out["time"] = ends
+        out["EOD"] = hours
+        out["EOD_fallback"] = missing_eod
+
     if out["station_id"].isna().any() or (out["station_id"] == "").any():
         raise ConfigError("Observation station_id contains missing or empty values")
 
@@ -171,7 +201,7 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
             if flag_column not in raw.columns:
                 raise ConfigError(f"QC column '{flag_column}' for '{canonical}' is missing")
             flags = raw[flag_column].astype("string").str.strip().str.lower()
-            out[f"{canonical}_qc_flag"] = flags
+            out[f"{canonical}_qc_flag"] = flags.str.upper() if settings.get("qc_flag_case") == "upper" else flags
             accepted = settings.get("accepted_qc_flags")
             if accepted is not None:
                 accepted_normalized = {str(item).strip().lower() for item in accepted}
@@ -179,6 +209,16 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
         out[canonical] = values
         if trace is not None:
             out[f"{canonical}_trace"] = trace.where(values.notna(), pd.NA)
+
+    if eod_settings.get("reset_using_eod", False):
+        valid_precipitation = pd.Series(False, index=out.index)
+        for name in ("precipitation", "precipitation_daily"):
+            if name in out:
+                valid_precipitation |= out[name].notna()
+        report_missing = missing_eod & valid_precipitation
+        if report_missing.any():
+            print(f"[GSOD EOD] {int(report_missing.sum())} accepted precipitation rows missing EOD; using {fallback:g} hours. Source: {source}")
+            print(raw.loc[report_missing].to_string(index=True, max_rows=None, max_cols=None))
 
     derived = config.get("derived", {})
     if derived.get("relative_humidity", {}).get("method") == "temperature_dewpoint":

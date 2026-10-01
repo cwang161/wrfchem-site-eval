@@ -234,3 +234,56 @@ def test_trace_precipitation_conversion_and_qc(tmp_path):
 def test_removed_profiles_are_rejected(tmp_path, profile):
     with pytest.raises(ConfigError, match='Supported profiles'):
         read_observations(_write_yaml(tmp_path / 'invalid.yaml', {'dataset': {'profile': profile}}))
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_gsod_eod_time_and_uppercase_flags(tmp_path, enabled):
+    pd.DataFrame({"site": ["A", "B", "C"], "date": ["2026-01-01"] * 3,
+                  "lat": [30] * 3, "lon": [110] * 3, "EOD": [3, 0, 24],
+                  "rain": [1] * 3, "flag": ["g", "D", "f"]}).to_csv(tmp_path / "gsod.csv", index=False)
+    config = {"dataset": {"profile": "combined_wide", "file": "gsod.csv"},
+              "columns": {"station_id": "site", "time": "date", "latitude": "lat", "longitude": "lon"},
+              "time": {"timezone": "UTC"},
+              "precipitation_time": {"reset_using_eod": enabled, "eod_column": "EOD"},
+              "variables": {"precipitation": {"column": "rain", "scale": 25.4,
+                             "qc_flag_column": "flag", "qc_flag_case": "upper", "accepted_qc_flags": ["G", "D", "F"]}}}
+    path = _write_yaml(tmp_path / "gsod.yaml", config)
+    result = read_observations(path)
+    expected = ["2026-01-01 03:00", "2026-01-01 00:00", "2026-01-02 00:00"] if enabled else ["2026-01-01"] * 3
+    assert result.time.tolist() == pd.to_datetime(expected).tolist()
+    assert result.precipitation_qc_flag.tolist() == ["G", "D", "F"]
+    assert result.precipitation.tolist() == [25.4] * 3
+    if enabled:
+        config["precipitation_time"]["eod_column"] = "absent"
+        with pytest.raises(ConfigError, match="Required EOD column"):
+            read_observations(_write_yaml(path, config))
+        config["precipitation_time"]["eod_column"] = "EOD"
+        raw = pd.read_csv(tmp_path / "gsod.csv")
+        raw.loc[0, "EOD"] = 25
+        raw.to_csv(tmp_path / "gsod.csv", index=False)
+        with pytest.raises(ConfigError, match="Invalid EOD"):
+            read_observations(_write_yaml(path, config))
+
+
+def test_gsod_missing_eod_and_zero_attributes(tmp_path, capsys):
+    pd.DataFrame({'site': ['A','B','C','D'], 'date': ['2026-01-01'] * 4,
+                  'lat': [30]*4, 'lon': [110]*4, 'EOD': [None,3,None,24],
+                  'rain': [0,1,2,0], 'flag': ['D','G','H','H']}).to_csv(tmp_path/'gsod.csv', index=False)
+    config = {'dataset': {'profile':'combined_wide','file':'gsod.csv'},
+              'columns': {'station_id':'site','time':'date','latitude':'lat','longitude':'lon'},
+              'time': {'timezone':'UTC'},
+              'precipitation_time': {'reset_using_eod':True,'missing_eod_hours':24},
+              'variables': {'precipitation': {'column':'rain','scale':25.4,
+                  'qc_flag_column':'flag','qc_flag_case':'upper','accepted_qc_flags':['G','D','F']}}}
+    result = read_observations(_write_yaml(tmp_path/'gsod.yaml', config))
+    assert result.time.tolist() == pd.to_datetime(['2026-01-02','2026-01-01 03:00','2026-01-02','2026-01-02'], format='mixed').tolist()
+    assert result.EOD.tolist() == [24,3,24,24]
+    assert result.EOD_fallback.tolist() == [True,False,True,False]
+    assert result.precipitation.iloc[[0,1]].tolist() == [0.0,25.4]
+    assert pd.isna(result.precipitation.iloc[3])
+    assert pd.isna(result.precipitation.iloc[2])
+    assert 'precipitation_trace' not in result
+    output = capsys.readouterr().out
+    assert '1 accepted precipitation rows missing EOD' in output
+    assert '2026-01-01' in output
+    assert ' C ' not in output
