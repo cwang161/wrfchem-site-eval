@@ -96,11 +96,12 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
         combined = pd.concat(tables, ignore_index=True, sort=False)
         # Validate coordinates before coalescing coincident station/time rows.
         coordinate_settings = config.get("station_coordinates", {})
-        if "tolerance_m" in coordinate_settings:
+        if "tolerance_m" in coordinate_settings or coordinate_settings.get("method") == "rounding":
             combined = _harmonize_station_coordinates(
-                combined, coordinate_settings["tolerance_m"],
+                combined, coordinate_settings.get("tolerance_m", 100),
                 coordinate_settings.get("reference", "first_source"),
                 coordinate_settings.get("on_conflict", "error"),
+                coordinate_settings.get("method", "distance"),
             )
         else:
             station_table(combined)
@@ -206,10 +207,12 @@ def station_table(observations: pd.DataFrame, tolerance_degrees: float = 1e-5) -
 
 def _harmonize_station_coordinates(
     observations: pd.DataFrame, tolerance_m: float, reference: str = "first_source",
-    on_conflict: str = "error"
+    on_conflict: str = "error", method: str = "distance"
 ) -> pd.DataFrame:
     """Validate spherical distance to first-source coordinates, then unify them."""
 
+    if method not in {"distance", "rounding"}:
+        raise ConfigError("station_coordinates.method must be distance or rounding")
     if on_conflict not in {"error", "use_reference"}:
         raise ConfigError("station_coordinates.on_conflict must be error or use_reference")
     if reference != "first_source":
@@ -233,20 +236,28 @@ def _harmonize_station_coordinates(
     )
     a = np.sin((lat - lat0) / 2)**2 + np.cos(lat) * np.cos(lat0) * np.sin(dlon / 2)**2
     distance = 2 * 6371000.0 * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
-    outside = distance > tolerance
-    if outside.any():
-        names = result.loc[outside, "station_id"].astype(str).unique().tolist()
+    if method == "distance":
+        outside = distance > tolerance
+    else:
+        # Decimal ROUND_HALF_UP gives conventional rounding at ties.
+        from decimal import Decimal, ROUND_HALF_UP
+        def rounded(values):
+            return values.map(lambda value: Decimal(str(value)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP))
+        outside = (
+            (rounded(result["latitude"]) != rounded(reference_coords["latitude"]))
+            | (rounded(result["longitude"]) != rounded(reference_coords["longitude"]))
+        ).to_numpy()
+    report = result.loc[outside, ["station_id", "latitude", "longitude"]].copy()
+    report["reference_latitude"] = reference_coords.loc[outside, "latitude"]
+    report["reference_longitude"] = reference_coords.loc[outside, "longitude"]
+    report["distance_m"] = distance[outside]
+    report = report.drop_duplicates().sort_values(["station_id", "distance_m"])
+    if not report.empty:
+        print(f"Coordinate conflicts ({method}): {report['station_id'].nunique()} stations.")
+        print(report.to_csv(index=False, float_format="%.6f"), end="")
         if on_conflict == "error":
-            raise ConfigError(f"Station coordinates exceed tolerance {tolerance:g} m: {names}")
-    if on_conflict == "use_reference":
-        changed = (result[["latitude", "longitude"]] != reference_coords).any(axis=1)
-        report = result.loc[changed, ["station_id", "latitude", "longitude"]].copy()
-        report["reference_latitude"] = reference_coords.loc[changed, "latitude"]
-        report["reference_longitude"] = reference_coords.loc[changed, "longitude"]
-        report["distance_m"] = distance[changed.to_numpy()]
-        report = report.drop_duplicates().sort_values(["station_id", "distance_m"])
-        print(f"Coordinate differences: {report['station_id'].nunique()} stations; using first-source coordinates.")
-        if not report.empty:
-            print(report.to_csv(index=False, float_format="%.6f"), end="")
+            names = report["station_id"].astype(str).unique().tolist()
+            raise ConfigError(f"Station coordinate conflicts ({method}); exceed tolerance or rounding mismatch: {names}")
     result[["latitude", "longitude"]] = reference_coords
     return result

@@ -163,3 +163,17 @@ def test_coordinate_conflicts_use_reference_and_report_all(capsys):
     output = capsys.readouterr().out
     assert all(station in output for station in ids)
     assert "12 stations" in output
+
+
+def test_coordinate_rounding_and_conflict_reporting(capsys):
+    from wrfchem_site_eval.observations import _harmonize_station_coordinates
+    data = pd.DataFrame({"station_id": ["A", "A", "B", "B"],
+        "latitude": [57.19, 57.189567, 40.0, 40.02],
+        "longitude": [65.324, 65.3243, 100., 100.]})
+    result = _harmonize_station_coordinates(data, 0, on_conflict="use_reference", method="rounding")
+    assert result.latitude.tolist() == [57.19, 57.19, 40., 40.]
+    output = capsys.readouterr().out
+    assert "1 stations" in output and "B," in output and "A," not in output
+    with pytest.raises(ConfigError):
+        _harmonize_station_coordinates(data, 0, method="rounding")
+    assert "B," in capsys.readouterr().out
