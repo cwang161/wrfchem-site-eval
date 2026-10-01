@@ -151,3 +151,15 @@ def test_combined_sources_coordinate_tolerance(tmp_path):
     _write_yaml(path, config)
     with pytest.raises(ConfigError, match="exceed tolerance"):
         read_observations(path)
+
+
+def test_coordinate_conflicts_use_reference_and_report_all(capsys):
+    from wrfchem_site_eval.observations import _harmonize_station_coordinates
+    ids = [f"S{i:02d}" for i in range(12)]
+    data = pd.DataFrame({"station_id": ids + ids, "latitude": [40.] * 12 + [41.] * 12,
+                         "longitude": [100.] * 24})
+    result = _harmonize_station_coordinates(data, 100, on_conflict="use_reference")
+    assert (result.latitude == 40).all()
+    output = capsys.readouterr().out
+    assert all(station in output for station in ids)
+    assert "12 stations" in output

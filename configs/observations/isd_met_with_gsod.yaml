@@ -12,3 +12,4 @@ sources:
 station_coordinates:
   tolerance_m: 100
   reference: first_source
+  on_conflict: use_reference

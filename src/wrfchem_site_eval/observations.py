@@ -100,6 +100,7 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
             combined = _harmonize_station_coordinates(
                 combined, coordinate_settings["tolerance_m"],
                 coordinate_settings.get("reference", "first_source"),
+                coordinate_settings.get("on_conflict", "error"),
             )
         else:
             station_table(combined)
@@ -204,10 +205,13 @@ def station_table(observations: pd.DataFrame, tolerance_degrees: float = 1e-5) -
 
 
 def _harmonize_station_coordinates(
-    observations: pd.DataFrame, tolerance_m: float, reference: str = "first_source"
+    observations: pd.DataFrame, tolerance_m: float, reference: str = "first_source",
+    on_conflict: str = "error"
 ) -> pd.DataFrame:
     """Validate spherical distance to first-source coordinates, then unify them."""
 
+    if on_conflict not in {"error", "use_reference"}:
+        raise ConfigError("station_coordinates.on_conflict must be error or use_reference")
     if reference != "first_source":
         raise ConfigError("station_coordinates.reference must be first_source")
     try:
@@ -231,7 +235,18 @@ def _harmonize_station_coordinates(
     distance = 2 * 6371000.0 * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
     outside = distance > tolerance
     if outside.any():
-        names = result.loc[outside, "station_id"].astype(str).unique().tolist()[:10]
-        raise ConfigError(f"Station coordinates exceed tolerance {tolerance:g} m: {names}")
+        names = result.loc[outside, "station_id"].astype(str).unique().tolist()
+        if on_conflict == "error":
+            raise ConfigError(f"Station coordinates exceed tolerance {tolerance:g} m: {names}")
+    if on_conflict == "use_reference":
+        changed = (result[["latitude", "longitude"]] != reference_coords).any(axis=1)
+        report = result.loc[changed, ["station_id", "latitude", "longitude"]].copy()
+        report["reference_latitude"] = reference_coords.loc[changed, "latitude"]
+        report["reference_longitude"] = reference_coords.loc[changed, "longitude"]
+        report["distance_m"] = distance[changed.to_numpy()]
+        report = report.drop_duplicates().sort_values(["station_id", "distance_m"])
+        print(f"Coordinate differences: {report['station_id'].nunique()} stations; using first-source coordinates.")
+        if not report.empty:
+            print(report.to_csv(index=False, float_format="%.6f"), end="")
     result[["latitude", "longitude"]] = reference_coords
     return result
