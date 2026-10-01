@@ -10,6 +10,6 @@ sources:
 
 # Unify small coordinate differences using the first source (ISD).
 station_coordinates:
-  tolerance_m: 100
+  tolerance_m: 1000
   reference: first_source
   on_conflict: use_reference

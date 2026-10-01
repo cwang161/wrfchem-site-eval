@@ -35,7 +35,7 @@ def _read_table(path: Path, file_format: str) -> pd.DataFrame:
     if fmt == "auto":
         fmt = path.suffix.lower().lstrip(".")
     if fmt in {"csv", "txt"}:
-        return pd.read_csv(path)
+        return pd.read_csv(path, low_memory=False)
     if fmt in {"xlsx", "xls"}:
         return pd.read_excel(path)
     if fmt == "parquet":
