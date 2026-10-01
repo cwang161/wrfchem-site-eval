@@ -95,8 +95,15 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
         tables = [read_observations(_resolve(path.parent, str(source))) for source in sources]
         combined = pd.concat(tables, ignore_index=True, sort=False)
         # Validate coordinates before coalescing coincident station/time rows.
-        station_table(combined)
-        combined = combined.sort_values(["station_id", "time"])
+        coordinate_settings = config.get("station_coordinates", {})
+        if "tolerance_m" in coordinate_settings:
+            combined = _harmonize_station_coordinates(
+                combined, coordinate_settings["tolerance_m"],
+                coordinate_settings.get("reference", "first_source"),
+            )
+        else:
+            station_table(combined)
+        combined = combined.sort_values(["station_id", "time"], kind="stable")
         combined = combined.groupby(["station_id", "time"], observed=True, as_index=False).first()
         return combined.sort_values(["station_id", "time"]).reset_index(drop=True)
     if dataset.get("profile") not in {"combined_wide", "chem_qc", "isd_hourly_met"}:
@@ -193,4 +200,38 @@ def station_table(observations: pd.DataFrame, tolerance_degrees: float = 1e-5) -
         names = spread.index[inconsistent].astype(str).tolist()[:10]
         raise ConfigError(f"Station coordinates change over time: {names}")
     result = grouped[["latitude", "longitude"]].first().reset_index()
+    return result
+
+
+def _harmonize_station_coordinates(
+    observations: pd.DataFrame, tolerance_m: float, reference: str = "first_source"
+) -> pd.DataFrame:
+    """Validate spherical distance to first-source coordinates, then unify them."""
+
+    if reference != "first_source":
+        raise ConfigError("station_coordinates.reference must be first_source")
+    try:
+        tolerance = float(tolerance_m)
+    except (TypeError, ValueError) as exc:
+        raise ConfigError("station_coordinates.tolerance_m must be a non-negative number") from exc
+    if isinstance(tolerance_m, bool) or not np.isfinite(tolerance) or tolerance < 0:
+        raise ConfigError("station_coordinates.tolerance_m must be a non-negative number")
+    if observations[["latitude", "longitude"]].isna().any().any():
+        raise ConfigError("Station coordinates contain missing values")
+    result = observations.copy()
+    reference_coords = result.groupby("station_id", sort=False, observed=True)[
+        ["latitude", "longitude"]
+    ].transform("first")
+    lat = np.deg2rad(result["latitude"].to_numpy())
+    lat0 = np.deg2rad(reference_coords["latitude"].to_numpy())
+    dlon = np.deg2rad(
+        (result["longitude"].to_numpy() - reference_coords["longitude"].to_numpy() + 180) % 360 - 180
+    )
+    a = np.sin((lat - lat0) / 2)**2 + np.cos(lat) * np.cos(lat0) * np.sin(dlon / 2)**2
+    distance = 2 * 6371000.0 * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
+    outside = distance > tolerance
+    if outside.any():
+        names = result.loc[outside, "station_id"].astype(str).unique().tolist()[:10]
+        raise ConfigError(f"Station coordinates exceed tolerance {tolerance:g} m: {names}")
+    result[["latitude", "longitude"]] = reference_coords
     return result

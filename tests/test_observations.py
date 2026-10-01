@@ -114,3 +114,40 @@ def test_combined_sources_coalesces_variables(tmp_path):
     assert len(result) == 1
     assert result.loc[0, "temperature"] == 300.0
     assert result.loc[0, "precipitation"] == pytest.approx(25.4)
+
+
+def test_station_coordinate_tolerance_preserves_first_source():
+    from wrfchem_site_eval.observations import _harmonize_station_coordinates
+    data = pd.DataFrame({
+        "station_id": ["A", "A"],
+        "latitude": [57.19, 57.189567],
+        "longitude": [65.324, 65.3243],
+        "precipitation": [1.0, 2.0],
+    })
+    unified = _harmonize_station_coordinates(data, 100)
+    assert unified["latitude"].tolist() == [57.19, 57.19]
+    assert unified["longitude"].tolist() == [65.324, 65.324]
+    assert unified["precipitation"].tolist() == [1.0, 2.0]
+    with pytest.raises(ConfigError, match="exceed tolerance"):
+        _harmonize_station_coordinates(data, 10)
+
+
+def test_combined_sources_coordinate_tolerance(tmp_path):
+    for name, lat, lon, value in [("isd", 57.19, 65.324, 1), ("gsod", 57.189567, 65.3243, 2)]:
+        pd.DataFrame({"station": ["A"], "date": ["2019-01-01"], "lat": [lat], "lon": [lon], "rain": [value]}).to_csv(tmp_path / f"{name}.csv", index=False)
+        _write_yaml(tmp_path / f"{name}.yaml", {
+            "dataset": {"profile": "combined_wide", "file": f"{name}.csv"},
+            "columns": {"station_id": "station", "time": "date", "latitude": "lat", "longitude": "lon"},
+            "variables": {"precipitation": {"column": "rain"}},
+        })
+    config = {"dataset": {"profile": "combined_sources"}, "sources": ["isd.yaml", "gsod.yaml"],
+              "station_coordinates": {"tolerance_m": 100, "reference": "first_source"}}
+    path = _write_yaml(tmp_path / "combined.yaml", config)
+    result = read_observations(path)
+    assert result.loc[0, "latitude"] == 57.19
+    assert result.loc[0, "precipitation"] == 1
+    station_table(result)
+    config["station_coordinates"]["tolerance_m"] = 10
+    _write_yaml(path, config)
+    with pytest.raises(ConfigError, match="exceed tolerance"):
+        read_observations(path)

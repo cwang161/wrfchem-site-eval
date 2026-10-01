@@ -7,3 +7,8 @@ dataset:
 sources:
   - isd_met.yaml
   - gsod_precip.yaml
+
+# Unify small coordinate differences using the first source (ISD).
+station_coordinates:
+  tolerance_m: 100
+  reference: first_source
