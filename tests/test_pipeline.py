@@ -48,7 +48,7 @@ def test_complete_case_pipeline(tmp_path):
     }).to_csv(tmp_path / "chem.csv", index=False)
     common_columns = {"time": "Time", "latitude": "LAT", "longitude": "LON"}
     _yaml(tmp_path / "met.yaml", {
-        "dataset": {"profile": "isd_hourly_met", "file": "met.csv"},
+        "dataset": {"profile": "combined_wide", "file": "met.csv"},
         "columns": {"station_id": "Site", **common_columns}, "time": {"timezone": "UTC"},
         "variables": {
             "temperature": {"column": "Temp"}, "wind_speed": {"column": "Wind"},
@@ -56,7 +56,7 @@ def test_complete_case_pipeline(tmp_path):
         },
     })
     _yaml(tmp_path / "chem.yaml", {
-        "dataset": {"profile": "chem_qc", "file": "chem.csv"},
+        "dataset": {"profile": "combined_wide", "file": "chem.csv"},
         "columns": {"station_id": "code", "time": "Time", "latitude": "latitude", "longitude": "longitude"},
         "time": {"timezone": "UTC"},
         "variables": {

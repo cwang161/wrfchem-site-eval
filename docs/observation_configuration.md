@@ -2,7 +2,7 @@
 
 ## Standard chemistry input
 
-Chemistry observations use the `chem_qc` combined-wide profile. Every row is
+Chemistry observations use the `combined_wide` profile. Every row is
 one station and timestamp. Required identity columns are configured rather
 than hard-coded; pollutant columns are optional unless `required: true`.
 
@@ -22,7 +22,7 @@ The flag column itself is always retained. The default example accepts only
 
 ## ISD hourly meteorology
 
-The `isd_hourly_met` profile uses the same combined-wide reader plus explicit
+The `combined_wide` profile uses the same combined-wide reader plus explicit
 scale and offset rules. The example converts tenths of degrees Celsius to
 kelvin, tenths of metres per second to metres per second, and derives relative
 humidity from temperature and dew point.
@@ -67,3 +67,7 @@ observation product uses a non-midnight end-of-day convention.
 PM2.5 and PM10 retain WRF mass concentrations. Gas fields labelled ppmv are
 converted with surface pressure, 2-m temperature and molar mass. O3, NO2, SO2,
 NO and NH3 output ug m-3; CO outputs mg m-3 to match the supplied template.
+
+Only `combined_wide` (one wide table) and `combined_sources` (multiple configured sources) profiles are supported. Use `source_unit` and `target_unit`; conversion remains controlled by `scale` and `offset`. The legacy `unit` key is rejected.
+
+For ISD-lite precipitation, set `trace_values: [-1]` and `trace_replacement: 0.0`. Trace codes are recognized before scaling; replacement is in target units. The additional `precipitation_trace` column preserves trace identity. Missing and QC-rejected records remain missing in both columns. Zero is an explicit evaluation convention for an unquantified trace, not an exact measured amount.

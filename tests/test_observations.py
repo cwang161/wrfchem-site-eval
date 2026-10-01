@@ -25,7 +25,7 @@ def test_read_chem_qc_masks_rejected_flags(tmp_path):
         "pm25_qc_flag": ["valid", "gross_error"],
     }).to_csv(source, index=False)
     config = _write_yaml(tmp_path / "chem.yaml", {
-        "dataset": {"profile": "chem_qc", "file": "chem.csv", "format": "auto"},
+        "dataset": {"profile": "combined_wide", "file": "chem.csv", "format": "auto"},
         "columns": {
             "station_id": "code", "time": "Time",
             "latitude": "latitude", "longitude": "longitude",
@@ -55,7 +55,7 @@ def test_read_isd_met_scales_and_derives_rh(tmp_path):
         "Dew_point": [50], "Wind_speed": [20],
     }).to_csv(source, index=False)
     config = _write_yaml(tmp_path / "met.yaml", {
-        "dataset": {"profile": "isd_hourly_met", "file": "met.csv", "format": "csv"},
+        "dataset": {"profile": "combined_wide", "file": "met.csv", "format": "csv"},
         "columns": {
             "station_id": "Site", "time": "Time", "latitude": "LAT", "longitude": "LON",
         },
@@ -202,3 +202,35 @@ def test_csv_preserves_coordinate_trailing_zero_precision(tmp_path):
     result = read_observations(path)
     assert result.attrs["coordinate_precision"][("A", "latitude")] == 3
     assert result.attrs["coordinate_precision"][("A", "longitude")] == 2
+
+
+def test_trace_precipitation_conversion_and_qc(tmp_path):
+    pd.DataFrame({
+        'site': ['A'] * 5, 'time': pd.date_range('2019-01-01', periods=5, freq='h'),
+        'lat': [30] * 5, 'lon': [110] * 5,
+        'rain': [-1, 0, 12, -9999, -1], 'qc': [0, 0, 0, 0, 1],
+    }).to_csv(tmp_path / 'rain.csv', index=False)
+    config = {
+        'dataset': {'profile': 'combined_wide', 'file': 'rain.csv'},
+        'columns': {'station_id': 'site', 'time': 'time', 'latitude': 'lat', 'longitude': 'lon'},
+        'missing_values': [-9999],
+        'variables': {'precipitation': {
+            'column': 'rain', 'source_unit': 'mm_scaled_10', 'target_unit': 'mm',
+            'scale': 0.1, 'trace_values': [-1], 'trace_replacement': 0.02,
+            'qc_flag_column': 'qc', 'accepted_qc_flags': [0],
+        }},
+    }
+    result = read_observations(_write_yaml(tmp_path / 'rain.yaml', config))
+    assert result.precipitation.iloc[:3].tolist() == pytest.approx([0.02, 0, 1.2])
+    assert result.precipitation.iloc[3:].isna().all()
+    assert result.precipitation_trace.iloc[:3].tolist() == [True, False, False]
+    assert result.precipitation_trace.iloc[3:].isna().all()
+    config['variables']['precipitation']['unit'] = 'mm'
+    with pytest.raises(ConfigError, match='source_unit and target_unit'):
+        read_observations(_write_yaml(tmp_path / 'rain.yaml', config))
+
+
+@pytest.mark.parametrize('profile', ['chem_qc', 'isd_hourly_met', 'combined_long'])
+def test_removed_profiles_are_rejected(tmp_path, profile):
+    with pytest.raises(ConfigError, match='Supported profiles'):
+        read_observations(_write_yaml(tmp_path / 'invalid.yaml', {'dataset': {'profile': profile}}))

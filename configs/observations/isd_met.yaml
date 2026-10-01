@@ -1,21 +1,46 @@
+# ISD-lite 小时气象观测配置.
+# 输入必须是已整理的宽表表格，每行表示一个站点的一个时次.
+# 本文件只描述气象观测读取, 包括单位转换和derived变量求解.
+# 单独测试：wrfchem-site-eval normalize-observations configs/observations/isd_met.yaml \
+#   --output output/normalized_met.csv
+
 dataset:
+  # 数据集名称，用于说明数据来源.
   name: ISD meteorology
-  profile: isd_hourly_met
-  file: /path/to/isd_met_observations.csv
+  # 支持单文件宽表combined_wide和多来源合并combined_sources，尚未支持长表的输入文件格式.
+  profile: combined_wide
+  # 必须修改为真实文件路径。相对路径以本 YAML 所在目录为基准.
+  file: /Users/cwang161/project/WRFCHEMV3.6.1_ECLIPSEV6b_PAPER1_CHEN_201911_202208/DATA/OBS_DATA/NCDC_GSOD_MET/WRFCHEM_ECLIPSE_combined_data/isd-lite_2019_hourly.csv
+  # auto 根据扩展名判断格式；csv/txt 当前均使用逗号分隔 CSV 读取,
+  # 也支持 xlsx、xls、parquet（相应格式需要解决对应的包依赖).
   format: auto
 
+# 右侧是输入文件的实际列名，区分大小写; 左侧是会转换为的输出文件中的统一名称.
+# 输入数据必须提供站名,时间,纬度,经度这四列；站点 ID 保留为字符串，避免丢失前导零,
+# 坐标采用十进制度；纬度北正南负，经度东正西负.
 columns:
   station_id: Site
   time: Time
   latitude: LAT
   longitude: LON
 
+# 原始时间timezone属于 UTC。如果输入文件实际为当地时间,需填写真实时区,
+# 这里使用IANA时区名称，格式通常为地区/城市, 如 Asia/Shanghai.
+# 可选: 输出时区output_timezone, 不设置时默认是UTC.
+# 可选：format: "%Y-%m-%d %H:%M:%S"，指定输入文件的时间文本格式。不设置,则默认由pandas自动解析.
+# 可选：drop_timezone: 转换完成后是否去掉时区标签，不设置默认 true.
 time:
   timezone: UTC
 
+# 输出文件中的统一变量名称 -> 输入数据的列名、缩放和单位说明,
+# 实际换算由 scale、offset 控制：输出 = 原始值 * scale + offset,
+# 换算方法依据https://www.ncei.noaa.gov/pub/data/noaa/isd-lite/isd-lite-technical-document.txt
+# source_unit、target_unit只是是单位说明，不会单独触发自动换算.
+# 未写 required 时默认 true：配置列缺失会报错。如某列允许完全不存在，可在该变量下设置 required: false。
 variables:
   temperature:
     column: Temp
+    # 原始整数以 0.1 摄氏度为单位，例如 253 表示 25.3°C。先乘 0.1，再加 273.15，得到 298.45 K。
     source_unit: degC_scaled_10
     target_unit: K
     scale: 0.1
@@ -33,13 +58,28 @@ variables:
     scale: 0.1
   wind_direction:
     column: Wind_direction
-    unit: degree
+    # 气象来向：从地理正北顺时针计角，单位为度。
+    # normalize-observations 不旋转风向，仍保留 earth-relative。
+    # 旋转在主 case 的 matching.rotate_observed_wind_to_grid 中控制。
+    source_unit: degree
+    target_unit: degree
   precipitation:
     column: 1-h_precip
+    # Trace 表示微量降水；先识别原始 -1，再将其替换为目标单位下的 0 mm。
+    # 同时输出 precipitation_trace；缺测或 QC 无效记录的标记也为缺测。
+    trace_values: [-1]
+    trace_replacement: 0.0
+    # 若想使用 GSOD 日降水且不想混合小时/日降水，要不然取不同的名字,
+    # 要不然注释掉本 precipitation 配置。
     source_unit: mm_scaled_10
     target_unit: mm
     scale: 0.1
 
+# 用已经转换为 K 的气温和露点推导 RH。
+# 当前公式：RH = exp(17.67*Td_C/(243.5+Td_C))
+#                  / exp(17.67*T_C/(243.5+T_C))。
+# 输出为 0–1 的比例（不是 0–100%），并裁剪到 [0, 1]。
+# 气温或露点缺测时，相应 RH 也缺测；列完全不存在则报错。
 derived:
   relative_humidity:
     method: temperature_dewpoint
@@ -48,14 +88,28 @@ derived:
 
 quality_rules:
   wind:
-    # ISD codes calm wind direction as 0; direction is undefined for calm wind.
+    # 将静风风向置为缺测. 当前isd-lite中将 0 视为静风编码；
     invalid_direction_values: [0]
+    # 风速 < 0.5(单位是换算后的m/s)时也认为是静风,将风向置为缺测，
+    # 但风速本身保留；恰好 0.5 不会被此规则剔除。
     calm_speed_below: 0.5
 
-missing_values: [-9999, 9999, 999.9]
+# 原始数据中的缺测编码，在 scale/offset 换算之前替换为 NaN.
+# 当前为整张表的通用规则，并非某一个变量专用.
+# 请按输入数据的实际编码而非换算后的数据进行调整；原始 -9999 不应先乘 0.1 再判断.
+missing_values: [-9999, ]
+
+# 同一 station_id + time 存在重复行时：
+# error 报错；first 保留第一行；last 保留最后一行.
+# 该规则不计算重复记录的平均值。
 duplicate_policy: error
 
+# 可选附加信息：存在则复制到标准化输出，缺少则跳过。
+# 左侧是输出名称，右侧是输入列名；此处不会进行单位换算。
 metadata:
   country: CTRY
   station_name: STATION NAME
   elevation_m: ELEV(M)
+
+# ISD 与 GSOD 的坐标冲突处理在 isd_met_with_gsod.yaml 的
+# station_coordinates 中设置；无需在此单来源文件中重复配置。

@@ -1,5 +1,12 @@
 # Changelog
 
+## Observation configuration update
+
+- Support only combined_wide and combined_sources observation profiles.
+- Use source_unit and target_unit instead of unit.
+- Recognize raw trace precipitation codes before conversion and retain trace flags.
+- Use the supplied ISD-lite configuration.
+
 ## 1.9.0 - 2026-09-30
 
 - Interpolate `T2`, `Q2`, and `PSFC` before deriving station relative humidity.

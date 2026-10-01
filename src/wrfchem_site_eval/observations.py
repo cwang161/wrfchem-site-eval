@@ -114,9 +114,9 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
         combined = combined.sort_values(["station_id", "time"], kind="stable")
         combined = combined.groupby(["station_id", "time"], observed=True, as_index=False).first()
         return combined.sort_values(["station_id", "time"]).reset_index(drop=True)
-    if dataset.get("profile") not in {"combined_wide", "chem_qc", "isd_hourly_met"}:
+    if dataset.get("profile") not in {"combined_wide"}:
         raise ConfigError(
-            "Supported profiles: combined_wide, combined_sources, chem_qc, isd_hourly_met"
+            "Supported profiles: combined_wide, combined_sources"
         )
     source = _resolve(path.parent, str(dataset.get("file", "")))
     columns = config.get("columns", {})
@@ -143,14 +143,28 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
         raise ConfigError("Observation station_id contains missing or empty values")
 
     for canonical, settings in config.get("variables", {}).items():
+        if "unit" in settings:
+            raise ConfigError(f"Use source_unit and target_unit instead of unit for {canonical}")
         source_column = settings.get("column")
         if source_column not in raw.columns:
             if settings.get("required", True):
                 raise ConfigError(f"Column '{source_column}' for '{canonical}' is missing")
             continue
         values = pd.to_numeric(raw[source_column], errors="coerce")
+        trace = None
+        if "trace_values" in settings:
+            codes = settings["trace_values"]
+            if not isinstance(codes, list):
+                raise ConfigError(f"trace_values for {canonical} must be a list")
+            trace = values.isin(codes).astype("boolean")
         values = values * float(settings.get("scale", 1.0))
         values = values + float(settings.get("offset", 0.0))
+
+        if trace is not None:
+            replacement = float(settings.get("trace_replacement", 0.0))
+            if not np.isfinite(replacement) or replacement < 0:
+                raise ConfigError(f"trace_replacement for {canonical} must be finite and nonnegative")
+            values = values.mask(trace, replacement)
 
         flag_column = settings.get("qc_flag_column")
         if flag_column:
@@ -163,6 +177,8 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
                 accepted_normalized = {str(item).strip().lower() for item in accepted}
                 values = values.where(flags.isin(accepted_normalized))
         out[canonical] = values
+        if trace is not None:
+            out[f"{canonical}_trace"] = trace.where(values.notna(), pd.NA)
 
     derived = config.get("derived", {})
     if derived.get("relative_humidity", {}).get("method") == "temperature_dewpoint":

@@ -97,7 +97,7 @@ wrfchem-site-eval compare-cases output/BASE/metrics_met.parquet \
   output/CASE2/metrics_met.parquet --output output/met_comparison.csv
 ```
 
-Chemistry uses the combined-wide `chem_qc` profile. Column names, time zones,
+Chemistry uses the `combined_wide` profile. Column names, time zones,
 scales and accepted QC flags are configured in YAML rather than internal code.
 See `configs/example_case.yaml`, `configs/observations/` and
 `docs/observation_configuration.md`.
