@@ -1,9 +1,18 @@
 # Changelog
 
+## Quiet EOD fallback
+
+- Remove EOD fallback console reports; retain effective EOD and EOD_fallback columns.
+
+## Optional GSOD EOD column
+
+- Require EOD when enabled; missing values use default hours.
+- When disabled, ignore EOD and label UTC dates plus default hours.
+
 ## GSOD precipitation end-time alignment
 
 - Optionally label daily GSOD precipitation by UTC date plus EOD hours.
-- Default missing EOD to 24 hours and print all affected rows.
+- Default missing EOD values to 24 hours.
 - Preserve uppercase GSOD QC attributes and filter all precipitation (including zero) by accepted attributes without inferring trace.
 
 ## Observation configuration update

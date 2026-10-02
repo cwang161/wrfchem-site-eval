@@ -249,7 +249,7 @@ def test_gsod_eod_time_and_uppercase_flags(tmp_path, enabled):
                              "qc_flag_column": "flag", "qc_flag_case": "upper", "accepted_qc_flags": ["G", "D", "F"]}}}
     path = _write_yaml(tmp_path / "gsod.yaml", config)
     result = read_observations(path)
-    expected = ["2026-01-01 03:00", "2026-01-01 00:00", "2026-01-02 00:00"] if enabled else ["2026-01-01"] * 3
+    expected = ["2026-01-01 03:00", "2026-01-01 00:00", "2026-01-02 00:00"] if enabled else ["2026-01-02"] * 3
     assert result.time.tolist() == pd.to_datetime(expected).tolist()
     assert result.precipitation_qc_flag.tolist() == ["G", "D", "F"]
     assert result.precipitation.tolist() == [25.4] * 3
@@ -284,6 +284,24 @@ def test_gsod_missing_eod_and_zero_attributes(tmp_path, capsys):
     assert pd.isna(result.precipitation.iloc[2])
     assert 'precipitation_trace' not in result
     output = capsys.readouterr().out
-    assert '1 accepted precipitation rows missing EOD' in output
-    assert '2026-01-01' in output
-    assert ' C ' not in output
+    assert output == ''
+
+
+def test_disabled_eod_uses_default_even_with_absent_column(tmp_path, capsys):
+    pd.DataFrame({'site':['A'], 'date':['2026-01-01'], 'lat':[30], 'lon':[110],
+                  'rain':[0], 'flag':['G']}).to_csv(tmp_path/'rain.csv', index=False)
+    config = {'dataset':{'profile':'combined_wide','file':'rain.csv'},
+              'columns':{'station_id':'site','time':'date','latitude':'lat','longitude':'lon'},
+              'time':{'timezone':'UTC'},
+              'precipitation_time':{'reset_using_eod':False,'missing_eod_hours':24},
+              'variables':{'precipitation':{'column':'rain','qc_flag_column':'flag','accepted_qc_flags':['G']}}}
+    path = _write_yaml(tmp_path/'rain.yaml', config)
+    result = read_observations(path)
+    assert result.time.iloc[0] == pd.Timestamp('2026-01-02')
+    raw = pd.read_csv(tmp_path/'rain.csv')
+    raw['EOD'] = 99
+    raw.to_csv(tmp_path/'rain.csv', index=False)
+    result = read_observations(path)
+    assert result.time.iloc[0] == pd.Timestamp('2026-01-02')
+    assert result.EOD.iloc[0] == 24
+    assert capsys.readouterr().out == ''

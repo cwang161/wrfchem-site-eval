@@ -36,11 +36,12 @@ time:
 # 开启后：输出 time = GSOD 日期 00 UTC + EOD 小时数。
 # time 标记前 24 小时降水的结束时刻；EOD=24 会落在次日 00 UTC。
 # 此设置仅用于独立的降水来源；其他气象变量不会随降水一起移动。
-# 关闭时保留原来的日期时间；开启时 EOD 列必须存在；非缺测值须为 0–24，缺测使用下方默认值。
+# 开启时必须有 EOD 列；值缺测用默认小时数，非缺测值须为 0–24。
+# 关闭时忽略 EOD（无论列是否存在），统一用日期 00 UTC + 默认小时数。。
 precipitation_time:
   reset_using_eod: true
   eod_column: EOD
-  # EOD 缺测时按日期次日 00 UTC 作为结束时刻，只打印通过属性筛选且降水有效的 EOD 缺测行。
+  # EOD 缺测时按日期次日 00 UTC 作为结束时刻，不输出屏幕报告；输出 EOD_fallback 标记。
   missing_eod_hours: 24
 
 variables:

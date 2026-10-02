@@ -140,15 +140,17 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
         "longitude": pd.to_numeric(raw[required["longitude"]], errors="coerce"),
     })
     eod_settings = config.get("precipitation_time", {})
-    if eod_settings.get("reset_using_eod", False):
+    if "precipitation_time" in config:
         # This source represents daily precipitation only; do not move other observations.
         if set(config.get("variables", {})) - {"precipitation", "precipitation_daily"} or config.get("derived"):
             raise ConfigError("EOD time reset requires a precipitation-only observation source")
         column = eod_settings.get("eod_column", "EOD")
-        if column not in raw.columns:
+        use_eod = eod_settings.get("reset_using_eod", False)
+        if use_eod and column not in raw.columns:
             raise ConfigError(f"Required EOD column '{column}' is missing")
-        hours = pd.to_numeric(raw[column], errors="coerce")
-        missing_eod = raw[column].isna() | raw[column].astype("string").str.strip().eq("").fillna(False)
+        eod_values = raw[column] if use_eod else pd.Series(np.nan, index=raw.index)
+        hours = pd.to_numeric(eod_values, errors="coerce")
+        missing_eod = eod_values.isna() | eod_values.astype("string").str.strip().eq("").fillna(False)
         invalid = (~missing_eod) & (hours.isna() | ~np.isfinite(hours) | (hours < 0) | (hours > 24))
         if invalid.any():
             raise ConfigError(f"Invalid EOD hours in {int(invalid.sum())} rows; expected 0 to 24")
@@ -209,16 +211,6 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
         out[canonical] = values
         if trace is not None:
             out[f"{canonical}_trace"] = trace.where(values.notna(), pd.NA)
-
-    if eod_settings.get("reset_using_eod", False):
-        valid_precipitation = pd.Series(False, index=out.index)
-        for name in ("precipitation", "precipitation_daily"):
-            if name in out:
-                valid_precipitation |= out[name].notna()
-        report_missing = missing_eod & valid_precipitation
-        if report_missing.any():
-            print(f"[GSOD EOD] {int(report_missing.sum())} accepted precipitation rows missing EOD; using {fallback:g} hours. Source: {source}")
-            print(raw.loc[report_missing].to_string(index=True, max_rows=None, max_cols=None))
 
     derived = config.get("derived", {})
     if derived.get("relative_humidity", {}).get("method") == "temperature_dewpoint":
