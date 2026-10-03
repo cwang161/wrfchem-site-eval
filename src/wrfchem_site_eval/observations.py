@@ -65,17 +65,27 @@ def _canonical_time(values: pd.Series, settings: dict[str, Any]) -> pd.Series:
     return parsed
 
 
-def _apply_duplicate_policy(data: pd.DataFrame, policy: str) -> pd.DataFrame:
+def _apply_duplicate_policy(
+    data: pd.DataFrame, policy: str, report_path: Path,
+) -> pd.DataFrame:
+    if policy not in {"error", "first", "last"}:
+        raise ConfigError("duplicate_policy must be one of: error, first, last")
     keys = ["station_id", "time"]
     duplicate = data.duplicated(keys, keep=False)
+    # Replace the report on every successful check, including an empty report,
+    # so a previous run cannot leave misleading duplicate records behind.
+    report = data.loc[duplicate].copy()
+    report.insert(0, "normalized_row_number", np.flatnonzero(duplicate) + 1)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report.to_csv(report_path, index=False)
     if not duplicate.any():
         return data
     if policy == "error":
-        example = data.loc[duplicate, keys].head(3).to_dict("records")
-        raise ConfigError(f"Duplicate station/time observations; examples: {example}")
-    if policy in {"first", "last"}:
-        return data.drop_duplicates(keys, keep=policy)
-    raise ConfigError("duplicate_policy must be one of: error, first, last")
+        raise ConfigError(
+            f"Duplicate station/time observations: {len(report)} records; "
+            f"all duplicate records saved to {report_path}"
+        )
+    return data.drop_duplicates(keys, keep=policy)
 
 
 def read_observations(config_path: str | Path) -> pd.DataFrame:
@@ -243,7 +253,12 @@ def read_observations(config_path: str | Path) -> pd.DataFrame:
             if pd.notna(value):
                 precision.setdefault((str(station), axis), max(0, -Decimal(str(value).strip()).as_tuple().exponent))
     out.attrs["coordinate_precision"] = precision
-    out = _apply_duplicate_policy(out, config.get("duplicate_policy", "error"))
+    report_path = _resolve(
+        path.parent, str(config.get("duplicate_report", f"{path.stem}_duplicates.csv")),
+    )
+    if report_path in {source, path}:
+        raise ConfigError("duplicate_report must not overwrite the observation file or configuration")
+    out = _apply_duplicate_policy(out, config.get("duplicate_policy", "error"), report_path)
     return out.sort_values(["station_id", "time"]).reset_index(drop=True)
 
 

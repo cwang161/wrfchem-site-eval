@@ -77,3 +77,22 @@ GSOD uses `precipitation_time` to label the end of a 24-hour accumulation. With 
 All GSOD precipitation amounts, including zero, require an accepted G/D/F attribute. Accepted zero amounts become 0.0 mm; rejected zero amounts remain missing. No trace identity is inferred from GSOD zero amounts.
 
 Updated EOD switch semantics: when precipitation_time is configured, reset_using_eod=true requires the EOD column and uses default hours only for missing values. False ignores EOD entirely and adds missing_eod_hours (default 24) to the UTC date. No fallback console reports are emitted. Sources without precipitation_time retain their original timestamp behavior.
+
+
+### Duplicate observation reports
+
+For each combined_wide source, all records sharing station_id and normalized
+time are written before duplicate handling, including both retained and discarded
+records. The CSV contains all normalized columns and normalized_row_number
+(the 1-based input row position after normalization).
+
+```yaml
+duplicate_policy: error  # error stops; first/last continue after deduplication
+duplicate_report: reports/isd_duplicates.csv
+```
+
+The optional report path is relative to the observation YAML directory. By default
+it is `<config-stem>_duplicates.csv` beside that YAML. Each check replaces the
+report; no duplicates produces a header-only CSV. combined_sources checks each
+source separately; intended cross-source coalescing is unchanged. An error stops
+at the offending source, so later sources are not checked.

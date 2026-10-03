@@ -305,3 +305,23 @@ def test_disabled_eod_uses_default_even_with_absent_column(tmp_path, capsys):
     assert result.time.iloc[0] == pd.Timestamp('2026-01-02')
     assert result.EOD.iloc[0] == 24
     assert capsys.readouterr().out == ''
+
+
+@pytest.mark.parametrize("policy", ["error", "first", "last"])
+def test_all_duplicate_records_reported(tmp_path, policy):
+    from wrfchem_site_eval.observations import _apply_duplicate_policy
+    data = pd.DataFrame({"station_id": ["A", "B", "A", "B", "C"],
+                         "time": pd.to_datetime(["2026-01-01"] * 5),
+                         "temperature": [1, 2, 3, 4, 5]})
+    report_path = tmp_path / "reports" / "duplicates.csv"
+    if policy == "error":
+        with pytest.raises(ConfigError, match="all duplicate records saved"):
+            _apply_duplicate_policy(data, policy, report_path)
+    else:
+        result = _apply_duplicate_policy(data, policy, report_path)
+        assert result.temperature.tolist() == ([1, 2, 5] if policy == "first" else [3, 4, 5])
+    report = pd.read_csv(report_path)
+    assert report.temperature.tolist() == [1, 2, 3, 4]
+    assert report.normalized_row_number.tolist() == [1, 2, 3, 4]
+    _apply_duplicate_policy(data.iloc[-1:], policy, report_path)
+    assert pd.read_csv(report_path).empty

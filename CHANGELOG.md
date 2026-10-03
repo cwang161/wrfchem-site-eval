@@ -1,3 +1,8 @@
+## Duplicate observation CSV reports
+
+- Save every duplicate station/time record for error, first and last policies.
+- Report paths are configurable per observation source; error still stops execution.
+
 # Changelog
 
 ## Quiet EOD fallback
